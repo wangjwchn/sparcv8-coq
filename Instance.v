@@ -7,6 +7,7 @@ Local Open Scope sparc_scope.
 Require Import int_auto.
 Require Import math_sol.
 Require Import Integers.
+Require Import Coq.Logic.FunctionalExtensionality.
 
 (************************************************************************************************************************)
 (* ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜᵤᵥₓ *)
@@ -95,48 +96,20 @@ Definition underflow_handler := [
   rett l2 ₐᵣ
 ].
 
-Parameter
-    P_w00 P_w01 P_w02 P_w03 P_w04 P_w05 P_w06 P_w07 
-    P_w10 P_w11 P_w12 P_w13 P_w14 P_w15 P_w16 P_w17 
-    P_w20 P_w21 P_w22 P_w23 P_w24 P_w25 P_w26 P_w27 
-    P_w30 P_w31 P_w32 P_w33 P_w34 P_w35 P_w36 P_w37 
-    P_w40 P_w41 P_w42 P_w43 P_w44 P_w45 P_w46 P_w47 
-    P_w50 P_w51 P_w52 P_w53 P_w54 P_w55 P_w56 P_w57 
-    P_w60 P_w61 P_w62 P_w63 P_w64 P_w65 P_w66 P_w67 
-    P_w70 P_w71 P_w72 P_w73 P_w74 P_w75 P_w76 P_w77 
-    P_w80 P_w81 P_w82 P_w83 P_w84 P_w85 P_w86 P_w87 
-    P_w90 P_w91 P_w92 P_w93 P_w94 P_w95 P_w96 P_w97 
-    P_wa0 P_wa1 P_wa2 P_wa3 P_wa4 P_wa5 P_wa6 P_wa7 
-    P_wb0 P_wb1 P_wb2 P_wb3 P_wb4 P_wb5 P_wb6 P_wb7 
-    P_wc0 P_wc1 P_wc2 P_wc3 P_wc4 P_wc5 P_wc6 P_wc7: Word.
-
-Parameter
-    P_r00 P_r01 P_r02 P_r03 P_r04 P_r05 P_r06 P_r07
-    P_r08 P_r09 P_r10 P_r11 P_r12 P_r13 P_r14 P_r15
-    P_r16 P_r17 P_r18 P_r19 P_r20 P_r21 P_r22 P_r23
-    P_r24 P_r25 P_r26 P_r27 P_r28 P_r29 P_r30 P_r31: Word.
-
 
 Definition handler_context (R: RegFile) :=
-  0 <= Int.unsigned (R#cwp) <= 7 /\ not_annuled_R R /\ trap_disabled_R R /\
-  no_trap_R R /\  sup_mode_R R /\ word_aligned_R R#l1 /\ word_aligned_R R#l2.
+ 0 <= Int.unsigned (R#cwp) <= Int.unsigned(Asm.N)-1 /\ not_annuled_R R /\ trap_disabled_R R /\
+  no_trap_R R /\  sup_mode_R R.
 
 Definition single_mask : Word -> Word -> Prop :=
   fun cwp wim =>
     ($1) <<ᵢ cwp = wim.
 
 Definition align_context(O: RState) :=
-  let (R',F') := left_win 1 O in word_aligned_R R'#sp.
+  let (R,F) := O in word_aligned_R R#l1 /\ word_aligned_R R#l2 /\ word_aligned_R R#fp.
 
 Definition normal_cursor(O: RState) :=
   let (R,_) := O in R#npc = R#pc +ᵢ ($4).
-
-Definition normal_step(S S': State) :=
-  let '(_,Q,_) := S in
-  let '(_,Q',_) := S' in
-  let (R,_) := Q in 
-  let (R',_) := Q' in 
-  R'#pc = R#pc +ᵢ ($4).
 
 Fixpoint set_function (w: Address) (F: Function)(C: CodeHeap)  : Prop :=
   match F with
@@ -144,105 +117,14 @@ Fixpoint set_function (w: Address) (F: Function)(C: CodeHeap)  : Prop :=
   | nil => True
   end.
 
-
-Definition f_context(F: FrameList) :=
-  F =
-   [[P_w00;P_w01;P_w02;P_w03;P_w04;P_w05;P_w06;P_w07];
-    [P_w10;P_w11;P_w12;P_w13;P_w14;P_w15;P_w16;P_w17];
-    [P_w20;P_w21;P_w22;P_w23;P_w24;P_w25;P_w26;P_w27];
-    [P_w30;P_w31;P_w32;P_w33;P_w34;P_w35;P_w36;P_w37];
-    [P_w40;P_w41;P_w42;P_w43;P_w44;P_w45;P_w46;P_w47];
-    [P_w50;P_w51;P_w52;P_w53;P_w54;P_w55;P_w56;P_w57];
-    [P_w60;P_w61;P_w62;P_w63;P_w64;P_w65;P_w66;P_w67];
-    [P_w70;P_w71;P_w72;P_w73;P_w74;P_w75;P_w76;P_w77];
-    [P_w80;P_w81;P_w82;P_w83;P_w84;P_w85;P_w86;P_w87];
-    [P_w90;P_w91;P_w92;P_w93;P_w94;P_w95;P_w96;P_w97];
-    [P_wa0;P_wa1;P_wa2;P_wa3;P_wa4;P_wa5;P_wa6;P_wa7];
-    [P_wb0;P_wb1;P_wb2;P_wb3;P_wb4;P_wb5;P_wb6;P_wb7];
-    [P_wc0;P_wc1;P_wc2;P_wc3;P_wc4;P_wc5;P_wc6;P_wc7]].
-
-Definition r_context(R: RegFile) :=
-  R#r0 = P_r00 /\ R#r1 = P_r01 /\ R#r2 = P_r02 /\ R#r3 = P_r03 /\ 
-  R#r4 = P_r04 /\ R#r5 = P_r05 /\ R#r6 = P_r06 /\ R#r7 = P_r07 /\ 
-  R#r8 = P_r08 /\ R#r9 = P_r09 /\ R#r10 = P_r10 /\ R#r11 = P_r11 /\ 
-  R#r12 = P_r12 /\ R#r13 = P_r13 /\ R#r14 = P_r14 /\ R#r15 = P_r15 /\ 
-  R#r16 = P_r16 /\ R#r17 = P_r17 /\ R#r18 = P_r18 /\ R#r19 = P_r19 /\ 
-  R#r20 = P_r20 /\ R#r21 = P_r21 /\ R#r22 = P_r22 /\ R#r23 = P_r23 /\ 
-  R#r24 = P_r24 /\ R#r25 = P_r25 /\ R#r26 = P_r26 /\ R#r27 = P_r27 /\ 
-  R#r28 = P_r28 /\ R#r29 = P_r29 /\ R#r30 = P_r30 /\ R#r31 = P_r31.
-(*
-Lemma left_equal :
-  forall (i:GenReg) R1 R1' R2 R2' F F1' F2',
-      f_context F ->
-      left_win 1 (R1,F) = (R1',F1') ->
-      left_win 1 (R2,F) = (R2',F2') ->
-      i =  \/ i = g1 /\ i = g2 /\ i = g3 /\ 
-      i = g4 \/ i = g5 /\ i = g6 /\ i = g7 /\
-      i = i1 \/ i = i2 /\ i = i2 /\ i = i3 /\ 
-      i = i4 \/ i = i5 /\ i = i6 /\ i = i7 ->
-      R1'#i = R2'#i.
-Proof.
-  intros.
-  unfolds in H.
-  substs.
-  unfold left_win in *.
-  asserts_rewrite ((Z.to_nat 1) = 1%nat) in *. compute. auto.
-  unfold left_iter in *.
-  unfold left in *.
-  simpl in H1.
-  simpl in H0.
-  inverts H0.
-  inverts H1.
-
-  destruct H2 as (b0 & b1 & b2 & b3 & b4 & b5 & b6 & b7).
-
-  destruct i.
-
-  destruct i;
-  try solve [false].
-Qed.
-  simpl; auto.
-*)
-Lemma left_then_right :
-  forall (i:GenReg) R F R' F' R'' F'',
-      f_context F ->
-      left_win 1 (R,F) = (R',F') ->
-      right_win 1 (R',F') = (R'',F'') ->
-      R#i = R''#i.
-Proof.
-  intros.
-  rewrite <- H0 in H1.
-  clear H0.
-  unfold right_win in H1.
-  unfold left_win in H1.
-  asserts_rewrite ((Z.to_nat 1) = 1%nat) in H1. compute. auto.
-  unfold left_iter in H1.
-  unfold right_iter in H1.
-  unfolds in H.
-  substs.
-  unfold left in H1.
-  unfold right in H1.
-  unfold fench in H1.
-  unfold replace in H1.
-  simpl in H1.
-  inverts H1.
-
-  destruct i;
-  simpl; auto.
-Qed.
-
-Definition parameter_context(O: RState) :=
-  let (R,F) := O in
-    r_context(R) /\ f_context(F).
-
 Definition overflow_pre_cond : Cond :=
   fun W =>
     let (CP,S) := W in
     let (Cu,Cs) := CP in
-    let '(MP,Q,_) := S in
+    let '(MP,Q,D) := S in
     let (R,F) := Q in
-    handler_context R /\ set_function (cursor_Q Q) overflow_handler Cs /\
-    single_mask R#cwp R#wim /\ align_context Q /\ normal_cursor Q /\ parameter_context Q.
+    set_function (cursor_Q Q) overflow_handler Cs /\ normal_cursor Q /\
+    handler_context R /\ align_context Q /\ single_mask R#cwp R#wim /\ D = nil.
 
 Definition overflow_post_cond : Cond :=
   fun W =>
@@ -362,10 +244,6 @@ Lemma align_plus4:
   word_aligned_R w ->
   word_aligned_R w +ᵢ ($4).
 Proof.
-  intros.
-  unfold word_aligned_R in *.
-  unfold word_aligned in *.
-  unfold get_range in *.
 Admitted.
 
 Lemma Win_Xor:
@@ -602,6 +480,152 @@ Proof.
     int auto; simpl; omega.
   false. rewrite H in H1. inverts H1. inverts H2.
 Qed.
+
+Theorem HandleOverflow:
+  forall CP S,
+    overflow_pre_cond (CP,S) ->
+    exists S' E ,Z__ CP S E 8 S'/\
+    overflow_post_cond (CP,S').
+Proof.
+  intros.
+  unfolds in H.
+  destruct CP as (Cu & Cs).
+  destruct S as (MPQ & D).
+  destruct MPQ as (MP & Q).
+  destruct MP as (Mu & Ms).
+  destruct Q as (R & F).
+  destruct H as (FUNC & CSR & IVR & ALIGN & MASK & DELAY).
+
+
+
+(* step 1 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D (rd wim r19).
+    splits.
+    - substs. auto.
+    - apply FUNC.
+    - unfolds. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\ 
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\
+          R'#l3 = R#wim /\ R'#l1 = R#l1 /\ R'#l2 = R#l2 /\ R'#fp = R#fp /\ F' = F /\ D' = D). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (rd wim r19)) as INS. {
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6; repeat (split; auto); auto.
+    (* unexpected_trap? no! *)
+    unfold unexpected_trap in *.
+    unfold trap_type in *.
+    assert (usr_mode R = false). apply IVR.
+    rewrite H in *. false.
+    }
+
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+  assert (R'#pc = R#pc +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits.
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto. apply CSR.
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+  }
+
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (align_context (R',F')) as ALIGN'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite (get_R r17 R' = get_R r17 R);
+    try asserts_rewrite (get_R r18 R' = get_R r18 R); 
+    try asserts_rewrite (get_R r30 R' = get_R r30 R);
+    iauto; apply ALIGN.
+  }
+
+  assert (single_mask (get_R cwp R') (get_R l3 R') ) as MASK'. {
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    asserts_rewrite ((get_R l3 R') = (get_R wim R)). iauto.
+    apply MASK.
+  }
+
+  assert (D' = []) as DELAY'. {
+    asserts_rewrite (D' = D). iauto. iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms, (R, F),D) [None] 1 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    assert (Z__ (Cu, Cs) (Mu, Ms, (R, F),D) nil 0 (Mu, Ms, (R, F),D)).
+    apply Zero.
+    apply (No_Event (Cu,Cs) nil 0 (Mu, Ms, (R, F),D) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  rename Ms into Ms_.
+  rename R into R_.
+  rename F into F_.
+  rename D into D_.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  clear H P__ IVR MASK CSR DELAY ALIGN.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+Abort.
+
+
 
 (*
 

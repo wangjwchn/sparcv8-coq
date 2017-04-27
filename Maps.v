@@ -1,4 +1,3 @@
-Add LoadPath "/Users/wangjwchn/Developer/sparc".
 Require Import Equivalence EquivDec.
 Require Import Coqlib.
 

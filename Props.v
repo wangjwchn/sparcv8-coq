@@ -4,6 +4,9 @@ Require Import Maps.
 Require Import Integers.
 Require Import LibTactics.
 Require Import Coq.omega.Omega.
+Require Import math_sol.
+Require Import int_auto.
+Require Import Coq.Logic.FunctionalExtensionality.
 Local Open Scope sparc_scope.
 Local Open Scope Z_scope.
 Import ListNotations.
@@ -2295,6 +2298,408 @@ Proof.
   }
   exists Ms'' Q'' D''. auto.
 Qed.
+
+Definition f_context(F: FrameList) :=
+  exists
+    P_w00 P_w01 P_w02 P_w03 P_w04 P_w05 P_w06 P_w07 
+    P_w10 P_w11 P_w12 P_w13 P_w14 P_w15 P_w16 P_w17 
+    P_w20 P_w21 P_w22 P_w23 P_w24 P_w25 P_w26 P_w27 
+    P_w30 P_w31 P_w32 P_w33 P_w34 P_w35 P_w36 P_w37 
+    P_w40 P_w41 P_w42 P_w43 P_w44 P_w45 P_w46 P_w47 
+    P_w50 P_w51 P_w52 P_w53 P_w54 P_w55 P_w56 P_w57 
+    P_w60 P_w61 P_w62 P_w63 P_w64 P_w65 P_w66 P_w67 
+    P_w70 P_w71 P_w72 P_w73 P_w74 P_w75 P_w76 P_w77 
+    P_w80 P_w81 P_w82 P_w83 P_w84 P_w85 P_w86 P_w87 
+    P_w90 P_w91 P_w92 P_w93 P_w94 P_w95 P_w96 P_w97 
+    P_wa0 P_wa1 P_wa2 P_wa3 P_wa4 P_wa5 P_wa6 P_wa7 
+    P_wb0 P_wb1 P_wb2 P_wb3 P_wb4 P_wb5 P_wb6 P_wb7 
+    P_wc0 P_wc1 P_wc2 P_wc3 P_wc4 P_wc5 P_wc6 P_wc7,
+  F =
+   [[P_w00;P_w01;P_w02;P_w03;P_w04;P_w05;P_w06;P_w07];
+    [P_w10;P_w11;P_w12;P_w13;P_w14;P_w15;P_w16;P_w17];
+    [P_w20;P_w21;P_w22;P_w23;P_w24;P_w25;P_w26;P_w27];
+    [P_w30;P_w31;P_w32;P_w33;P_w34;P_w35;P_w36;P_w37];
+    [P_w40;P_w41;P_w42;P_w43;P_w44;P_w45;P_w46;P_w47];
+    [P_w50;P_w51;P_w52;P_w53;P_w54;P_w55;P_w56;P_w57];
+    [P_w60;P_w61;P_w62;P_w63;P_w64;P_w65;P_w66;P_w67];
+    [P_w70;P_w71;P_w72;P_w73;P_w74;P_w75;P_w76;P_w77];
+    [P_w80;P_w81;P_w82;P_w83;P_w84;P_w85;P_w86;P_w87];
+    [P_w90;P_w91;P_w92;P_w93;P_w94;P_w95;P_w96;P_w97];
+    [P_wa0;P_wa1;P_wa2;P_wa3;P_wa4;P_wa5;P_wa6;P_wa7];
+    [P_wb0;P_wb1;P_wb2;P_wb3;P_wb4;P_wb5;P_wb6;P_wb7];
+    [P_wc0;P_wc1;P_wc2;P_wc3;P_wc4;P_wc5;P_wc6;P_wc7]].
+
+
+
+Lemma left_then_right1 :
+  forall (i:RegNameEq.t) R F R' F' R'' F'',
+      f_context F ->
+      left_win 1 (R,F) = (R',F') ->
+      right_win 1 (R',F') = (R'',F'') ->
+      i <> cwp ->
+      R i = R'' i.
+Proof.
+  intros.
+  rewrite <- H0 in H1.
+  clear H0.
+  unfold right_win in H1.
+  unfold left_win in H1.
+  asserts_rewrite ((Z.to_nat 1) = 1%nat) in H1. compute. auto.
+  unfold left_iter in H1.
+  unfold right_iter in H1.
+  unfolds in H.
+  destruct H as (
+    P_w00 & P_w01 & P_w02 & P_w03 & P_w04 & P_w05 & P_w06 & P_w07 &
+    P_w10 & P_w11 & P_w12 & P_w13 & P_w14 & P_w15 & P_w16 & P_w17 &
+    P_w20 & P_w21 & P_w22 & P_w23 & P_w24 & P_w25 & P_w26 & P_w27 &
+    P_w30 & P_w31 & P_w32 & P_w33 & P_w34 & P_w35 & P_w36 & P_w37 & 
+    P_w40 & P_w41 & P_w42 & P_w43 & P_w44 & P_w45 & P_w46 & P_w47 & 
+    P_w50 & P_w51 & P_w52 & P_w53 & P_w54 & P_w55 & P_w56 & P_w57 & 
+    P_w60 & P_w61 & P_w62 & P_w63 & P_w64 & P_w65 & P_w66 & P_w67 & 
+    P_w70 & P_w71 & P_w72 & P_w73 & P_w74 & P_w75 & P_w76 & P_w77 & 
+    P_w80 & P_w81 & P_w82 & P_w83 & P_w84 & P_w85 & P_w86 & P_w87 & 
+    P_w90 & P_w91 & P_w92 & P_w93 & P_w94 & P_w95 & P_w96 & P_w97 & 
+    P_wa0 & P_wa1 & P_wa2 & P_wa3 & P_wa4 & P_wa5 & P_wa6 & P_wa7 & 
+    P_wb0 & P_wb1 & P_wb2 & P_wb3 & P_wb4 & P_wb5 & P_wb6 & P_wb7 & 
+    P_wc0 & P_wc1 & P_wc2 & P_wc3 & P_wc4 & P_wc5 & P_wc6 & P_wc7 & H).
+  substs.
+  unfold left in H1.
+  unfold right in H1.
+  unfold fench in H1.
+  unfold replace in H1.
+  simpl in H1.
+  inverts H1.
+
+  destruct i;
+  simpl; auto.
+  destruct g;
+  simpl; auto.
+  destruct p;
+  simpl; auto.
+  unfolds in H2.
+  false.
+Qed.
+
+
+Lemma left_then_right2 :
+  forall R F R' F' R'' F'',
+      0 <= Int.unsigned (R#cwp) <= Int.unsigned(Asm.N)-1 ->
+      f_context F ->
+      left_win 1 (R,F) = (R',F') ->
+      right_win 1 (R',F') = (R'',F'') ->
+      R#cwp = R''#cwp.
+Proof.
+  intros.
+
+  assert (f_context F' /\ R'#cwp = post_cwp 1 R). {
+  unfold left_win in *.
+  asserts_rewrite ((Z.to_nat 1) = 1%nat) in *. compute. auto.
+  unfold left_iter in *.
+  destruct H0 as (
+    P_w00 & P_w01 & P_w02 & P_w03 & P_w04 & P_w05 & P_w06 & P_w07 &
+    P_w10 & P_w11 & P_w12 & P_w13 & P_w14 & P_w15 & P_w16 & P_w17 &
+    P_w20 & P_w21 & P_w22 & P_w23 & P_w24 & P_w25 & P_w26 & P_w27 &
+    P_w30 & P_w31 & P_w32 & P_w33 & P_w34 & P_w35 & P_w36 & P_w37 & 
+    P_w40 & P_w41 & P_w42 & P_w43 & P_w44 & P_w45 & P_w46 & P_w47 & 
+    P_w50 & P_w51 & P_w52 & P_w53 & P_w54 & P_w55 & P_w56 & P_w57 & 
+    P_w60 & P_w61 & P_w62 & P_w63 & P_w64 & P_w65 & P_w66 & P_w67 & 
+    P_w70 & P_w71 & P_w72 & P_w73 & P_w74 & P_w75 & P_w76 & P_w77 & 
+    P_w80 & P_w81 & P_w82 & P_w83 & P_w84 & P_w85 & P_w86 & P_w87 & 
+    P_w90 & P_w91 & P_w92 & P_w93 & P_w94 & P_w95 & P_w96 & P_w97 & 
+    P_wa0 & P_wa1 & P_wa2 & P_wa3 & P_wa4 & P_wa5 & P_wa6 & P_wa7 & 
+    P_wb0 & P_wb1 & P_wb2 & P_wb3 & P_wb4 & P_wb5 & P_wb6 & P_wb7 & 
+    P_wc0 & P_wc1 & P_wc2 & P_wc3 & P_wc4 & P_wc5 & P_wc6 & P_wc7 & H0).
+  substs.
+  unfold left in *.
+  unfold fench in *.
+  unfold replace in *.
+
+  split.
+
+  inverts H1.
+  unfolds.
+  exists P_w20 P_w21 P_w22 P_w23 P_w24 P_w25.
+  exists P_w26 P_w27 P_w30 P_w31 P_w32 P_w33.
+  exists P_w34 P_w35 P_w36 P_w37 P_w40 P_w41.
+  exists P_w42 P_w43 P_w44 P_w45 P_w46 P_w47.
+  exists P_w50 P_w51 P_w52 P_w53 P_w54 P_w55.
+  exists P_w56 P_w57 P_w60 P_w61 P_w62 P_w63.
+  exists P_w64 P_w65 P_w66 P_w67 P_w70 P_w71.
+  exists P_w72 P_w73 P_w74 P_w75 P_w76 P_w77.
+  exists P_w80 P_w81 P_w82 P_w83 P_w84 P_w85.
+  exists P_w86 P_w87 P_w90 P_w91 P_w92 P_w93.
+  exists P_w94 P_w95 P_w96 P_w97 P_wa0 P_wa1.
+  exists P_wa2 P_wa3 P_wa4 P_wa5 P_wa6 P_wa7.
+  exists P_wb0 P_wb1 P_wb2 P_wb3 P_wb4 P_wb5.
+  exists P_wb6 P_wb7 P_wc0 P_wc1 P_wc2 P_wc3.
+  exists P_wc4 P_wc5 P_wc6 P_wc7 (R r8) (R r9).
+  exists (R r10) (R r11) (R r12) (R r13) (R r14) (R r15).
+  exists (R r16) (R r17) (R r18) (R r19) (R r20) (R r21).
+  exists (R r22) (R r23). auto.
+
+  inverts H1. simpl. auto.
+  }
+  clear H0 H1.
+
+
+  destruct H3 as (H0 & G).
+  assert (R''#cwp = pre_cwp 1 R'). {
+  unfold right_win in *.
+  asserts_rewrite ((Z.to_nat 1) = 1%nat) in *. compute. auto.
+  unfold right_iter in *.
+  destruct H0 as (
+    P_w00 & P_w01 & P_w02 & P_w03 & P_w04 & P_w05 & P_w06 & P_w07 &
+    P_w10 & P_w11 & P_w12 & P_w13 & P_w14 & P_w15 & P_w16 & P_w17 &
+    P_w20 & P_w21 & P_w22 & P_w23 & P_w24 & P_w25 & P_w26 & P_w27 &
+    P_w30 & P_w31 & P_w32 & P_w33 & P_w34 & P_w35 & P_w36 & P_w37 & 
+    P_w40 & P_w41 & P_w42 & P_w43 & P_w44 & P_w45 & P_w46 & P_w47 & 
+    P_w50 & P_w51 & P_w52 & P_w53 & P_w54 & P_w55 & P_w56 & P_w57 & 
+    P_w60 & P_w61 & P_w62 & P_w63 & P_w64 & P_w65 & P_w66 & P_w67 & 
+    P_w70 & P_w71 & P_w72 & P_w73 & P_w74 & P_w75 & P_w76 & P_w77 & 
+    P_w80 & P_w81 & P_w82 & P_w83 & P_w84 & P_w85 & P_w86 & P_w87 & 
+    P_w90 & P_w91 & P_w92 & P_w93 & P_w94 & P_w95 & P_w96 & P_w97 & 
+    P_wa0 & P_wa1 & P_wa2 & P_wa3 & P_wa4 & P_wa5 & P_wa6 & P_wa7 & 
+    P_wb0 & P_wb1 & P_wb2 & P_wb3 & P_wb4 & P_wb5 & P_wb6 & P_wb7 & 
+    P_wc0 & P_wc1 & P_wc2 & P_wc3 & P_wc4 & P_wc5 & P_wc6 & P_wc7 & H0).
+  substs.
+  unfold right in *.
+  unfold left in *.
+  unfold fench in *.
+  unfold replace in *.
+  inverts H2.
+  simpl. auto.
+  }
+  clear H0 H2.
+
+  unfold post_cwp in G.
+  unfold pre_cwp in H1.
+  rewrite G in H1. clear G.
+  unfold Asm.N in H1.
+
+  remember (get_R cwp R) as c.
+  remember (get_R cwp R'') as c'.
+  remember (Int.unsigned c) as n.
+
+  unfold Asm.N in H.
+  asserts_rewrite (Int.unsigned $ 8 - 1 = 7) in H. {
+    clear Heqc Heqn H H1.
+    int auto.
+  }
+
+  assert (n = 0 \/ n = 1 \/ n = 2 \/ n = 3 \/ n = 4 \/ n = 5
+   \/ n = 6 \/ n = 7). {
+    clear Heqc Heqn H1.
+    int auto.
+  }
+  clear H Heqc Heqc'.
+
+  destruct H0.
+  {
+    substs.
+    int auto;
+    rewrite H;
+    simpl;
+    int auto;
+    int auto;
+    mauto.
+    compute.
+    rewrite <- H.
+    symmetry.
+    apply Int.repr_unsigned.
+  }
+  destruct H.
+  {
+    substs.
+    int auto;
+    rewrite H;
+    simpl;
+    int auto;
+    int auto;
+    mauto.
+    compute.
+    rewrite <- H.
+    symmetry.
+    apply Int.repr_unsigned.
+  }
+  destruct H.
+  {
+    substs.
+    int auto;
+    rewrite H;
+    simpl;
+    int auto;
+    int auto;
+    mauto.
+    compute.
+    rewrite <- H.
+    symmetry.
+    apply Int.repr_unsigned.
+  }
+  destruct H.
+  {
+    substs.
+    int auto;
+    rewrite H;
+    simpl;
+    int auto;
+    int auto;
+    mauto.
+    compute.
+    rewrite <- H.
+    symmetry.
+    apply Int.repr_unsigned.
+  }
+  destruct H.
+  {
+    substs.
+    int auto;
+    rewrite H;
+    simpl;
+    int auto;
+    int auto;
+    mauto.
+    compute.
+    rewrite <- H.
+    symmetry.
+    apply Int.repr_unsigned.
+  }
+  destruct H.
+  {
+    substs.
+    int auto;
+    rewrite H;
+    simpl;
+    int auto;
+    int auto;
+    mauto.
+    compute.
+    rewrite <- H.
+    symmetry.
+    apply Int.repr_unsigned.
+  }
+  destruct H.
+  {
+    substs.
+    int auto;
+    rewrite H;
+    simpl;
+    int auto;
+    int auto;
+    mauto.
+    compute.
+    rewrite <- H.
+    symmetry.
+    apply Int.repr_unsigned.
+  }
+  {
+    substs.
+    int auto;
+    rewrite H;
+    simpl;
+    int auto;
+    int auto;
+    mauto.
+    compute.
+    rewrite <- H.
+    symmetry.
+    apply Int.repr_unsigned.
+  }
+Qed.
+
+
+Lemma left_then_right_R :
+  forall R F R' F' R'' F'',
+      0 <= Int.unsigned (R#cwp) <= Int.unsigned(Asm.N)-1 ->
+      f_context F ->
+      left_win 1 (R,F) = (R',F') ->
+      right_win 1 (R',F') = (R'',F'') ->
+      R = R''.
+Proof.
+  intros.
+  apply functional_extensionality.
+  intros.
+  assert ({x = cwp} + {x <> cwp}). repeat decide equality.
+  destruct H3.
+  assert (get_R cwp R = get_R cwp R'').
+  apply (left_then_right2 R F R' F' R'' F''); iauto.
+  substs. iauto.
+
+  apply (left_then_right1 x R F R' F' R'' F''); iauto.
+Qed.
+
+
+Lemma left_then_right_F :
+  forall R F R' F' R'' F'',
+      f_context F ->
+      left_win 1 (R,F) = (R',F') ->
+      right_win 1 (R',F') = (R'',F'') ->
+      F = F''.
+Proof.
+  intros.
+  rewrite <- H0 in H1.
+  clear H0.
+  unfold right_win in H1.
+  unfold left_win in H1.
+  asserts_rewrite ((Z.to_nat 1) = 1%nat) in H1. compute. auto.
+  unfold left_iter in H1.
+  unfold right_iter in H1.
+  unfolds in H.
+  destruct H as (
+    P_w00 & P_w01 & P_w02 & P_w03 & P_w04 & P_w05 & P_w06 & P_w07 &
+    P_w10 & P_w11 & P_w12 & P_w13 & P_w14 & P_w15 & P_w16 & P_w17 &
+    P_w20 & P_w21 & P_w22 & P_w23 & P_w24 & P_w25 & P_w26 & P_w27 &
+    P_w30 & P_w31 & P_w32 & P_w33 & P_w34 & P_w35 & P_w36 & P_w37 & 
+    P_w40 & P_w41 & P_w42 & P_w43 & P_w44 & P_w45 & P_w46 & P_w47 & 
+    P_w50 & P_w51 & P_w52 & P_w53 & P_w54 & P_w55 & P_w56 & P_w57 & 
+    P_w60 & P_w61 & P_w62 & P_w63 & P_w64 & P_w65 & P_w66 & P_w67 & 
+    P_w70 & P_w71 & P_w72 & P_w73 & P_w74 & P_w75 & P_w76 & P_w77 & 
+    P_w80 & P_w81 & P_w82 & P_w83 & P_w84 & P_w85 & P_w86 & P_w87 & 
+    P_w90 & P_w91 & P_w92 & P_w93 & P_w94 & P_w95 & P_w96 & P_w97 & 
+    P_wa0 & P_wa1 & P_wa2 & P_wa3 & P_wa4 & P_wa5 & P_wa6 & P_wa7 & 
+    P_wb0 & P_wb1 & P_wb2 & P_wb3 & P_wb4 & P_wb5 & P_wb6 & P_wb7 & 
+    P_wc0 & P_wc1 & P_wc2 & P_wc3 & P_wc4 & P_wc5 & P_wc6 & P_wc7 & H).
+  substs.
+  unfold left in *.
+  unfold fench in *.
+  unfold replace in *.
+  inverts H1.
+  simpl. auto.
+Qed.
+
+
+Lemma left_stack_p :
+  forall R R' F F',
+      f_context F ->
+      left_win 1 (R,F) = (R',F') ->
+      R#r30 = R'#r14.
+Proof.
+  intros.
+  unfolds in H.
+  destruct H as (
+    P_w00 & P_w01 & P_w02 & P_w03 & P_w04 & P_w05 & P_w06 & P_w07 &
+    P_w10 & P_w11 & P_w12 & P_w13 & P_w14 & P_w15 & P_w16 & P_w17 &
+    P_w20 & P_w21 & P_w22 & P_w23 & P_w24 & P_w25 & P_w26 & P_w27 &
+    P_w30 & P_w31 & P_w32 & P_w33 & P_w34 & P_w35 & P_w36 & P_w37 & 
+    P_w40 & P_w41 & P_w42 & P_w43 & P_w44 & P_w45 & P_w46 & P_w47 & 
+    P_w50 & P_w51 & P_w52 & P_w53 & P_w54 & P_w55 & P_w56 & P_w57 & 
+    P_w60 & P_w61 & P_w62 & P_w63 & P_w64 & P_w65 & P_w66 & P_w67 & 
+    P_w70 & P_w71 & P_w72 & P_w73 & P_w74 & P_w75 & P_w76 & P_w77 & 
+    P_w80 & P_w81 & P_w82 & P_w83 & P_w84 & P_w85 & P_w86 & P_w87 & 
+    P_w90 & P_w91 & P_w92 & P_w93 & P_w94 & P_w95 & P_w96 & P_w97 & 
+    P_wa0 & P_wa1 & P_wa2 & P_wa3 & P_wa4 & P_wa5 & P_wa6 & P_wa7 & 
+    P_wb0 & P_wb1 & P_wb2 & P_wb3 & P_wb4 & P_wb5 & P_wb6 & P_wb7 & 
+    P_wc0 & P_wc1 & P_wc2 & P_wc3 & P_wc4 & P_wc5 & P_wc6 & P_wc7 & H).
+  substs.
+  unfold left_win in *.
+  asserts_rewrite ((Z.to_nat 1) = 1%nat) in *. compute. auto.
+  unfold left_iter in *.
+  unfold left in *.
+  simpl in H0.
+  inverts H0.
+  simpl. auto.
+Qed.
+
+
 
 (*
 Definition normal_ins: SparcIns -> RState -> Memory -> Prop :=
