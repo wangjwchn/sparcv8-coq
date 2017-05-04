@@ -163,7 +163,7 @@ Notation "a 'xor' b" := (Int.xor a b)(at level 1) : sparc_scope.
 Local Open Scope sparc_scope.
 
 Definition N : Word := $8.
-Definition X : DelayCycle := 3%nat.
+Definition X : DelayCycle := 2%nat.
 
 Inductive Item: Type :=
   | Ir: RegName -> Item
