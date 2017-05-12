@@ -1538,6 +1538,46 @@ Proof.
   false.
 Qed.
 
+Definition ArrorWR: CodePair -> State -> nat -> State -> Prop:=
+    fun CP S n S' =>
+    exists E,usr_mode_S S /\ empty_DL S /\ Z__ CP S E n S' /\ no_trap E.
+
+Theorem ModeControl:
+    forall CP S n S',
+      ArrorWR CP S n S' ->
+      usr_mode_S S'.
+Proof.
+  intros.
+  unfolds in H.
+  destruct H as (E & H).
+  destruct H as (H0 & H1 & H2 & H3).
+  apply (Non_Exfiltration_Iter CP S S' n E); iauto.
+  unfolds.
+  destruct S.
+  destruct p.
+  unfolds in H1.
+  substs. unfolds. auto.
+Qed.
+
+
+Theorem Non_Exfiltration:
+    forall CP S n S',
+      ArrorWR CP S n S' ->
+      sup_mem_eq S S'.
+Proof.
+  intros.
+  unfolds in H.
+  destruct H as (E & H).
+  destruct H as (H0 & H1 & H2 & H3).
+  apply (Non_Exfiltration_Iter CP S S' n E); iauto.
+  unfolds.
+  destruct S.
+  destruct p.
+  unfolds in H1.
+  substs. unfolds. auto.
+Qed.
+
+
 
 Lemma Non_Infiltration_Iter:
     forall n CP1 CP2 S1 S1' S2 S2' E1 E2,
@@ -1607,6 +1647,33 @@ Proof.
     inverts H3.
     inverts H2.
 
+Qed.
+
+Theorem Non_Infiltration:
+  forall n CP1 CP2 S1 S1' S2 S2',
+    usr_code_eq CP1 CP2 /\ low_eq S1 S2 ->
+    ArrorWR CP1 S1 n S1' /\ ArrorWR CP2 S2 n S2' ->
+    low_eq S1' S2'.
+Proof.
+  intros.
+  destruct H.
+  destruct H0.
+  destruct H0 as (E1 & Hx).
+  destruct H2 as (E2 & Hy).
+  destruct Hx as (Hx0 & Hx1 & Hx2 & Hx3).
+  destruct Hy as (Hy0 & Hy1 & Hy2 & Hy3).
+  apply (Non_Infiltration_Iter n CP1 CP2 S1 S1' S2 S2' E1 E2); iauto;
+  splits; iauto.
+  unfolds.
+  destruct S1.
+  destruct p.
+  unfolds in Hx1.
+  substs. unfolds. auto.
+  unfolds.
+  destruct S2.
+  destruct p.
+  unfolds in Hy1.
+  substs. unfolds. auto.
 Qed.
 
 Lemma Exsits_Q:
