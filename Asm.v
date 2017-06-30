@@ -409,7 +409,7 @@ Definition sup_mode_S : State -> Prop :=
   fun S => let '(_,Q,_) := S in sup_mode_Q Q.
 
 Definition word_aligned: Word -> bool :=
-  fun w => if (get_range 0 2 w) =ᵢ ($0) then true else false.
+  fun w => if (get_range 0 1 w) =ᵢ ($0) then true else false.
 
 Definition word_aligned_R: Word -> Prop :=
   fun w => word_aligned w = true.

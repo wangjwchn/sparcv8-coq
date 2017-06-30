@@ -12,6 +12,7 @@ Require Import Coq.Logic.FunctionalExtensionality.
 (************************************************************************************************************************)
 (* ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜᵤᵥₓ *)
 
+
 Notation " ri +ₐᵣ rj " := (Aro ri (Or rj))(at level 1) : asm_scope.
 Notation " r  +ₐₙ n  " := (Aro r (Ow n))(at level 1) : asm_scope.
 Notation " r 'ₐᵣ' " := (Ao (Or r))(at level 1) : asm_scope.
@@ -268,12 +269,270 @@ Proof.
   int auto.
 Qed.
 
+(* align 4 *)
+Lemma align_div:
+  forall n,
+  0<= (Int.unsigned n) <= Int.max_unsigned - 4 ->
+  Int.divu (n+ᵢ ($4)) ($4) = (Int.divu (n) ($4)) +ᵢ ($1).
+Proof.
+  intros.
+  int auto; remember (Int.unsigned n).
+  apply (Z_div_plus_full z 1 4).
+  omega.
+  split;
+  clear Heqz n.
+  SearchAbout Z.le Z.div.
+  apply (Z_div_pos z 4).
+  omega.
+  auto.
+  SearchAbout Z.le Z.div.
+  apply (Z_div_le z (4294967295*4) 4).
+  omega.
+  omega.
+Qed.
+
+
+(*
+Int.modu_divu:
+  forall x y : int32,
+  y <> Int.zero -> x modu y = x -ᵢ (Int.mul (Int.divu x y) y)
+*)
+
+Lemma align_modu:
+  forall n,
+  0<= (Int.unsigned n) <= Int.max_unsigned - 4 ->
+  Int.modu n ($4) = ($0) ->
+  Int.modu (n+ᵢ ($4)) ($4) = ($0).
+Proof.
+  intros.
+  SearchAbout Int.modu.
+  assert (n modu ($4) = n -ᵢ (Int.mul (Int.divu n ($4)) ($4))).
+  apply Int.modu_divu. {
+    clear n H H0. mauto.
+  }
+  assert ((n+ᵢ$4) modu ($4) = (n+ᵢ$4) -ᵢ (Int.mul (Int.divu (n+ᵢ$4) ($4)) ($4))).
+  apply Int.modu_divu. {
+    clear n H H0 H1. mauto.
+  }
+  rewrite H0 in H1.
+  clear H0.
+  assert ((n +ᵢ ($ 4)) -ᵢ (Int.mul (Int.divu n +ᵢ ($ 4) $ 4) $ 4) = ($0)). {
+  clear H2.
+  asserts_rewrite (Int.divu (n+ᵢ ($4)) ($4) = (Int.divu (n) ($4)) +ᵢ ($1)).
+  apply align_div; eauto.
+  SearchAbout Int.mul.
+  asserts_rewrite ((Int.mul (Int.divu n $ 4) +ᵢ ($ 1) $ 4) = 
+    (Int.mul (Int.divu n ($4)) $4) +ᵢ (Int.mul ($1) ($4))). {
+    apply (Int.mul_add_distr_l (Int.divu n $ 4) ($1) ($4)).
+  }
+  SearchAbout Int.add Int.sub.
+  asserts_rewrite ((Int.mul $ 1 $ 4) = ($4)). {
+    SearchAbout Int.mul.
+    apply Int.mul_commut.
+  }
+  SearchAbout Int.add Int.sub.
+  asserts_rewrite ((n +ᵢ ($ 4)) -ᵢ ((Int.mul (Int.divu n $ 4) $ 4) +ᵢ ($ 4)) = n -ᵢ (Int.mul (Int.divu n $ 4) $ 4)).
+  apply (Int.sub_shifted n (Int.mul (Int.divu n $ 4) $ 4) ($4)).
+  eauto.
+}
+  rewrite H2.
+  apply H0.
+Qed.
+
+(* Int.modu_and: *)
+Lemma align_and:
+  forall n,
+  0<= (Int.unsigned n) <= Int.max_unsigned - 4 ->
+  n &ᵢ ($3) = ($0) ->
+  (n+ᵢ ($4)) &ᵢ ($3) = ($0).
+Proof.
+  intros.
+  assert ($3 = $4 -ᵢ Int.one). auto.
+  rewrite H1 in H0. rewrite H1. clear H1.
+  asserts_rewrite (n &ᵢ (($ 4) -ᵢ Int.one) = (n modu ($4))) in H0.
+  symmetry.
+      SearchAbout Int.modu.
+    apply (Int.modu_and n ($4) ($2)).
+    auto.
+ asserts_rewrite ((n +ᵢ ($ 4)) &ᵢ (($ 4) -ᵢ Int.one) = ((n +ᵢ ($ 4)) modu ($4))).
+  symmetry.
+      apply (Int.modu_and (n +ᵢ ($ 4)) ($4) ($2)).
+    auto.
+    apply align_modu; eauto.
+Qed.
+
+Lemma align_plus4_part:
+  forall w,
+  0 <= (Int.unsigned w) <= Int.max_unsigned - 4 ->
+  word_aligned_R w ->
+  word_aligned_R w +ᵢ ($4).
+Proof.
+  intros.
+  unfold word_aligned_R in *.
+  unfold word_aligned in *.
+  unfold get_range in *.
+  asserts_rewrite ((((($ 1) <<ᵢ ($ (1 - 0 + 1))) -ᵢ ($ 1)) <<ᵢ ($ 0)) = ($3)) in *. auto.
+
+  remember ((w &ᵢ ($ 3)) =ᵢ ($ 0)).
+  destruct b; inverts H0.
+
+  assert (if (w &ᵢ ($ 3)) =ᵢ ($ 0) then (w &ᵢ ($ 3)) = ($0) else (w &ᵢ ($ 3)) <> ($ 0)).
+  {
+    apply Int.eq_spec.
+  }
+  rewrite <- Heqb in H0. clear Heqb.
+  asserts_rewrite (((w +ᵢ ($ 4)) &ᵢ ($ 3)) = ($0)).
+  {
+    apply align_and; eauto.
+  }
+  asserts_rewrite (($ 0) =ᵢ ($ 0) = true). apply Int.eq_true.
+  auto.
+Qed.
+
+Lemma align_out_range3:
+  forall w,
+  (Int.unsigned w) = Int.max_unsigned - 3 ->
+  word_aligned_R w ->
+  word_aligned_R w +ᵢ ($4).
+Proof.
+  intros.
+  unfold word_aligned_R in *.
+  unfold word_aligned in *.
+  unfold get_range in *.
+  asserts_rewrite ((((($ 1) <<ᵢ ($ (1 - 0 + 1))) -ᵢ ($ 1)) <<ᵢ ($ 0)) = ($3)) in *. auto.
+
+  assert (w = $(Int.max_unsigned - 3)).
+  symmetry.
+  apply (Int.eqm_repr_eq (Int.max_unsigned - 3) w).
+  rewrite H. apply Int.eqm_refl.
+
+  asserts_rewrite (((w +ᵢ ($ 4)) &ᵢ ($ 3)) = ($ 0)).
+  {
+   clear H0. rewrite H1.
+   clear H1. auto.
+  }
+  asserts_rewrite (($ 0) =ᵢ ($ 0) = true). apply Int.eq_true.
+  auto.
+Qed.
+
+
+Lemma align_out_range2:
+  forall w,
+  (Int.unsigned w) = Int.max_unsigned - 2 ->
+  word_aligned_R w ->
+  word_aligned_R w +ᵢ ($4).
+Proof.
+  intros.
+  unfold word_aligned_R in *.
+  unfold word_aligned in *.
+  unfold get_range in *.
+  asserts_rewrite ((((($ 1) <<ᵢ ($ (1 - 0 + 1))) -ᵢ ($ 1)) <<ᵢ ($ 0)) = ($3)) in *. auto.
+
+  assert (w = $(Int.max_unsigned - 2)).
+  symmetry.
+  apply (Int.eqm_repr_eq (Int.max_unsigned - 2) w).
+  rewrite H. apply Int.eqm_refl.
+
+  assert ((w &ᵢ ($ 3)) = ($ 1)).
+  {
+  clear H. rewrite H1. auto.
+  }
+  rewrite H2 in H0.
+  asserts_rewrite (($ 1) =ᵢ ($ 0) = false) in H0.
+  auto. inverts H0.
+Qed.
+
+Lemma align_out_range1:
+  forall w,
+  (Int.unsigned w) = Int.max_unsigned - 1 ->
+  word_aligned_R w ->
+  word_aligned_R w +ᵢ ($4).
+Proof.
+  intros.
+  unfold word_aligned_R in *.
+  unfold word_aligned in *.
+  unfold get_range in *.
+  asserts_rewrite ((((($ 1) <<ᵢ ($ (1 - 0 + 1))) -ᵢ ($ 1)) <<ᵢ ($ 0)) = ($3)) in *. auto.
+
+  assert (w = $(Int.max_unsigned - 1)).
+  symmetry.
+  apply (Int.eqm_repr_eq (Int.max_unsigned - 1) w).
+  rewrite H. apply Int.eqm_refl.
+
+  assert ((w &ᵢ ($ 3)) = ($ 2)).
+  {
+  clear H. rewrite H1. auto.
+  }
+  rewrite H2 in H0.
+  asserts_rewrite (($ 2) =ᵢ ($ 0) = false) in H0.
+  auto. inverts H0.
+Qed.
+
+Lemma align_out_range0:
+  forall w,
+  (Int.unsigned w) = Int.max_unsigned ->
+  word_aligned_R w ->
+  word_aligned_R w +ᵢ ($4).
+Proof.
+  intros.
+  unfold word_aligned_R in *.
+  unfold word_aligned in *.
+  unfold get_range in *.
+  asserts_rewrite ((((($ 1) <<ᵢ ($ (1 - 0 + 1))) -ᵢ ($ 1)) <<ᵢ ($ 0)) = ($3)) in *. auto.
+
+  assert (w = $(Int.max_unsigned)).
+  symmetry.
+  apply (Int.eqm_repr_eq (Int.max_unsigned) w).
+  rewrite H. apply Int.eqm_refl.
+
+  assert ((w &ᵢ ($ 3)) = ($ 3)).
+  {
+  clear H. rewrite H1. auto.
+  }
+  rewrite H2 in H0.
+  asserts_rewrite (($ 3) =ᵢ ($ 0) = false) in H0.
+  auto. inverts H0.
+Qed.
+
+Lemma align_my_word:
+  forall n,
+  0<= (Int.unsigned n) <= Int.max_unsigned - 4 \/
+  Int.unsigned n = Int.max_unsigned - 3 \/
+  Int.unsigned n = Int.max_unsigned - 2 \/
+  Int.unsigned n = Int.max_unsigned - 1 \/
+  Int.unsigned n = Int.max_unsigned.
+Proof.
+  intros.
+  assert(0<= (Int.unsigned n) <= Int.max_unsigned).
+  apply Int.unsigned_range_2.
+  int auto.
+Qed.
+
+
 Lemma align_plus4:
   forall w,
   word_aligned_R w ->
   word_aligned_R w +ᵢ ($4).
 Proof.
-Admitted.
+  intros.
+  assert (0<= (Int.unsigned w) <= Int.max_unsigned - 4 \/
+  Int.unsigned w = Int.max_unsigned - 3 \/
+  Int.unsigned w = Int.max_unsigned - 2 \/
+  Int.unsigned w = Int.max_unsigned - 1 \/
+  Int.unsigned w = Int.max_unsigned).
+  apply align_my_word.
+  destruct H0.
+  apply align_plus4_part; eauto.
+  destruct H0.
+  apply align_out_range3; eauto.
+  destruct H0.
+  apply align_out_range2; eauto.
+    destruct H0.
+  apply align_out_range1; eauto.
+  apply align_out_range0; eauto.
+Qed.
+
+
 
 Lemma cwp_cycle_pre:
   forall R,
@@ -1189,7 +1448,7 @@ Theorem HandleOverflow:
   forall CP S,
     overflow_pre_cond (CP,S) ->
     exists S' E ,Z__ CP S E 30 S'/\
-    overflow_post_cond (CP,S').
+    overflow_post_cond (CP,S') /\ no_trap E.
 Proof.
   intros.
   unfolds in H.
@@ -5752,8 +6011,12 @@ Proof.
   exists (Mu, Ms, (R, F), D) E.
   splits. auto.
   unfolds. auto.
+  rewrite HeqE.
+  simpl. auto.
 
 }}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 Qed.
+
+
 
 
