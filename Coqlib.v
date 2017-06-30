@@ -24,10 +24,11 @@ Require Export Bool.
 (* *)
 
 (** Section 1: optionT and pairT **)
+(*
 Axiom extensionality:
   forall (A B: Set) (f g : A -> B),
   (forall x, f x = g x) -> f = g.
-
+*)
 Inductive OptionT (T : Type) : Type :=
     NoneT1 : OptionT T
   | SomeT1 : T -> OptionT T.
@@ -36,8 +37,8 @@ Inductive optionT (A : Type) : Type :=
   | SomeT : A -> optionT A
   | NoneT : optionT A.
 
-Implicit Arguments SomeT [A].
-Implicit Arguments NoneT [A].
+ Arguments SomeT [A].
+ Arguments NoneT [A].
 
 Notation opt_predT :=
   (fun opt:optionT _ => 
@@ -73,7 +74,8 @@ Notation opt_predT2 :=
 
 Inductive prodT (A : Set) (B : Type) : Type :=
     pairT : A -> B -> prodT A B.
-Implicit Arguments pairT [A B].
+
+Arguments pairT [A B].
 
 Notation "( x , y , .. , z )" :=
   (pairT .. (pairT x y) .. z) : t_type_scope.
@@ -185,7 +187,8 @@ Tactic Notation "split_r_clear" "with" hyp (H) :=
 
 Lemma and_sym : forall (A B : Prop), A /\ B -> B /\ A.
 Proof. intros  A B [HA HB]; split; trivial. Qed.
-Implicit Arguments and_sym [A B].
+
+Arguments and_sym [A B].
 
 Ltac rsplit := apply and_sym; split.
 
@@ -1492,7 +1495,7 @@ Qed.
 Definition proj_sumbool (P Q: Prop) (a: {P} + {Q}) : bool :=
   if a then true else false.
 
-Implicit Arguments proj_sumbool [P Q].
+ Arguments proj_sumbool [P Q].
 
 Coercion proj_sumbool: sumbool >-> bool.
 

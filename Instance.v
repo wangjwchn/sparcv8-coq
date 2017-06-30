@@ -281,11 +281,11 @@ Proof.
   omega.
   split;
   clear Heqz n.
-  SearchAbout Z.le Z.div.
+  
   apply (Z_div_pos z 4).
   omega.
   auto.
-  SearchAbout Z.le Z.div.
+  
   apply (Z_div_le z (4294967295*4) 4).
   omega.
   omega.
@@ -305,7 +305,7 @@ Lemma align_modu:
   Int.modu (n+ᵢ ($4)) ($4) = ($0).
 Proof.
   intros.
-  SearchAbout Int.modu.
+  
   assert (n modu ($4) = n -ᵢ (Int.mul (Int.divu n ($4)) ($4))).
   apply Int.modu_divu. {
     clear n H H0. mauto.
@@ -320,17 +320,17 @@ Proof.
   clear H2.
   asserts_rewrite (Int.divu (n+ᵢ ($4)) ($4) = (Int.divu (n) ($4)) +ᵢ ($1)).
   apply align_div; eauto.
-  SearchAbout Int.mul.
+  
   asserts_rewrite ((Int.mul (Int.divu n $ 4) +ᵢ ($ 1) $ 4) = 
     (Int.mul (Int.divu n ($4)) $4) +ᵢ (Int.mul ($1) ($4))). {
     apply (Int.mul_add_distr_l (Int.divu n $ 4) ($1) ($4)).
   }
-  SearchAbout Int.add Int.sub.
+  
   asserts_rewrite ((Int.mul $ 1 $ 4) = ($4)). {
-    SearchAbout Int.mul.
+    
     apply Int.mul_commut.
   }
-  SearchAbout Int.add Int.sub.
+  
   asserts_rewrite ((n +ᵢ ($ 4)) -ᵢ ((Int.mul (Int.divu n $ 4) $ 4) +ᵢ ($ 4)) = n -ᵢ (Int.mul (Int.divu n $ 4) $ 4)).
   apply (Int.sub_shifted n (Int.mul (Int.divu n $ 4) $ 4) ($4)).
   eauto.
@@ -351,7 +351,7 @@ Proof.
   rewrite H1 in H0. rewrite H1. clear H1.
   asserts_rewrite (n &ᵢ (($ 4) -ᵢ Int.one) = (n modu ($4))) in H0.
   symmetry.
-      SearchAbout Int.modu.
+      
     apply (Int.modu_and n ($4) ($2)).
     auto.
  asserts_rewrite ((n +ᵢ ($ 4)) &ᵢ (($ 4) -ᵢ Int.one) = ((n +ᵢ ($ 4)) modu ($4))).

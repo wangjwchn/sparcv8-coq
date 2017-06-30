@@ -230,6 +230,21 @@ Module Range (Import LE: has_le) (Import HN : has_next LE) (Import HD: has_dist 
     auto.
   Qed.
 
+  Lemma iter_n_lt_lt: forall n b, le (_iter next b n) (_iter next b (S n)).
+    intro.
+    induction n.
+    intros.
+    simpl.
+    apply x_le_next.
+
+    intros.
+    assert (forall k, _iter next b (S k) = _iter next (next b) k).
+    auto.
+    rewrite H.
+    rewrite H.
+    apply IHn.
+  Qed.
+
   Lemma range_split_last' : forall (b:A) (l:nat) (x:A), range b l x \/ x = _iter next b (S l) -> range b (S l) x.
     intros b l.
     generalize b; clear b.
@@ -246,20 +261,7 @@ Module Range (Import LE: has_le) (Import HN : has_next LE) (Import HD: has_dist 
     elim H0; intros; split; auto.
     eapply le_trans.
     exact H2.
-    Lemma iter_n_lt_lt: forall n b, le (_iter next b n) (_iter next b (S n)).
-      intro.
-      induction n.
-      intros.
-      simpl.
-      apply x_le_next.
 
-      intros.
-      assert (forall k, _iter next b (S k) = _iter next (next b) k).
-      auto.
-      rewrite H.
-      rewrite H.
-      apply IHn.
-    Qed.
     apply iter_n_lt_lt.
     unfold range.
     split.
