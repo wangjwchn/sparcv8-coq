@@ -4,8 +4,8 @@ Require Import Maps.
 Require Import Integers.
 Require Import LibTactics.
 Require Import Coq.omega.Omega.
-Require Import math_sol.
-Require Import int_auto.
+Require Import MathSol.
+Require Import IntAuto.
 Require Import Coq.Logic.FunctionalExtensionality.
 Local Open Scope sparc_scope.
 Local Open Scope Z_scope.

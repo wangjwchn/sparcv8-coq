@@ -6,7 +6,7 @@ Require Import Coq.Setoids.Setoid.
 Require Import ZArith.
 Require Import Arith.
 Require Import LibTactics.
-Require Import int_auto.
+Require Import IntAuto.
 (*Require Import bits_map.*)
 
 Module _mathsolver.

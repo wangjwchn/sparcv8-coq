@@ -1,11 +1,11 @@
 Require Import Asm.
 Require Import Coqlib.
-Require Import Props.
+Require Import Property.
 Require Import LibTactics.
 Import ListNotations.
 Local Open Scope sparc_scope.
-Require Import int_auto.
-Require Import math_sol.
+Require Import IntAuto.
+Require Import MathSol.
 Require Import Integers.
 Require Import Coq.Logic.FunctionalExtensionality.
 
