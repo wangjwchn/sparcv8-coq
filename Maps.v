@@ -1,5 +1,5 @@
 Require Import Equivalence EquivDec.
-Require Import Coqlib.
+Require Import SMTC.Coqlib.
 
 (* To avoid useless definitions of inductors in extracted code. *)
 Local Unset Elimination Schemes.

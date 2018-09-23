@@ -1,7 +1,7 @@
 Require Import Asm.
-Require Import Coqlib.
+Require Import SMTC.Coqlib.
+Require Import SMTC.Integers.
 Require Import Maps.
-Require Import Integers.
 Require Import LibTactics.
 Require Import Coq.omega.Omega.
 Require Import MathSol.

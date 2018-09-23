@@ -1,7 +1,7 @@
 Set Implicit Arguments.
 Unset Strict Implicit.
 
-Require Import Integers.
+Require Import SMTC.Integers.
 Require Import Coq.Setoids.Setoid.
 Require Import ZArith.
 Require Import Arith.

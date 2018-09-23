@@ -9,6 +9,10 @@ Require Import IntAuto.
 Require Import MathSol.
 Require Import Coq.Logic.FunctionalExtensionality.
 
+Require Import SMTC.Tactic.
+Set SMT Solver "z3".
+Set SMT Debug.
+
 (************************************************************************************************************************)
 (* ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜᵤᵥₓ *)
 
@@ -73,49 +77,38 @@ Definition Cond := World -> Prop.
 
 Definition Function : Type := list SparcIns.
 
-Definition overflow_handler := [
-  rd wim l3;
-  or g0 g1 ᵣ l7;
-  srl l3 ($1)ₙ g1;
-  sll l3 (Asm.N-ᵢ($1))ₙ l4;
-  or l4 g1 ᵣ g1;
-  save g0 g0 ᵣ g0;
-  wr g0 g1 ᵣ wim;
-  nop;
-  nop;
-  nop;
-  st l0 sp ₐᵣ;
-  st l1 sp+ₐₙ($4);
-  st l2 sp+ₐₙ($8);
-  st l3 sp+ₐₙ($12);
-  st l4 sp+ₐₙ($16);
-  st l5 sp+ₐₙ($20);
-  st l6 sp+ₐₙ($24);
-  st l7 sp+ₐₙ($28);
-  st i0 sp+ₐₙ($32);
-  st i1 sp+ₐₙ($36);
-  st i2 sp+ₐₙ($40);
-  st i3 sp+ₐₙ($44);
-  st i4 sp+ₐₙ($48);
-  st i5 sp+ₐₙ($52);
-  st i6 sp+ₐₙ($56);
-  st i7 sp+ₐₙ($60);
-  restore g0 g0 ᵣ g0;
-  or g0 l7 ᵣ g1;
-  jmpl l1 ₐᵣ g0;
-  rett l2 ₐᵣ
-].
-
 Definition underflow_handler := [
   rd wim l3;
-  srl l3 (Asm.N-ᵢ($1))ₙ l4;
-  sll l3 ($1)ₙ l3;
-  or l3 l4 ᵣ l3;
-  wr g0 l3 ᵣ wim;
+  sll l3 ($1)ₙ l4;
+  srl l3 (Asm.N-ᵢ($1))ₙ l5;
+  or l5 l4 ᵣ l5;
+  wr g0 l5 ᵣ wim;
+  nop;
+  nop;
+  nop;
+  restore g0 g0 ᵣ g0;
+  restore g0 g0 ᵣ g0;
+  ld sp ₐᵣ  l0;
+  ld (sp+ₐₙ($4)) l1;
+  ld (sp+ₐₙ($8)) l2;
+  ld (sp+ₐₙ($12)) l3;
+  ld (sp+ₐₙ($16)) l4;
+  ld (sp+ₐₙ($20)) l5;
+  ld (sp+ₐₙ($24)) l6;
+  ld (sp+ₐₙ($28)) l7;
+  ld (sp+ₐₙ($32)) i0;
+  ld (sp+ₐₙ($36)) i1;
+  ld (sp+ₐₙ($40)) i2;
+  ld (sp+ₐₙ($44)) i3;
+  ld (sp+ₐₙ($48)) i4;
+  ld (sp+ₐₙ($52)) i5;
+  ld (sp+ₐₙ($56)) i6;
+  ld (sp+ₐₙ($60)) i7;
+  save g0 g0 ᵣ g0;
+  save g0 g0 ᵣ g0;
   jmpl l1 ₐᵣ g0;
   rett l2 ₐᵣ
 ].
-
 
 Definition handler_context (R: RegFile) :=
  0 <= Int.unsigned (R#cwp) <= Int.unsigned(Asm.N)-1 /\ not_annuled_R R /\ trap_disabled_R R /\
@@ -125,9 +118,25 @@ Definition single_mask : Word -> Word -> Prop :=
   fun cwp wim =>
     ($1) <<ᵢ cwp = wim.
 
-Definition align_context(O: RState) :=
+Definition single_mask2:Word -> Word -> Prop :=
+  fun cwp wim =>
+    (($1) <<ᵢ ((cwp +ᵢ ($2)) modu (Asm.N))) = wim.
+
+Definition memort_context : Word -> Memory -> Prop :=
+  fun loc M =>
+    exists v1 v2 v3 v4 v5 v6 v7 v8 v9 v10 v11 v12 v13 v14 v15 v16, 
+    M loc = Some v1 /\ M (loc+ᵢ($4)) = Some v2 /\
+    M (loc+ᵢ($8)) = Some v3 /\ M (loc+ᵢ($12)) = Some v4 /\
+    M (loc+ᵢ($16)) = Some v5 /\ M (loc+ᵢ($20)) = Some v6 /\
+    M (loc+ᵢ($24)) = Some v7 /\ M (loc+ᵢ($28)) = Some v8 /\
+    M (loc+ᵢ($32)) = Some v9 /\ M (loc+ᵢ($36)) = Some v10 /\
+    M (loc+ᵢ($40)) = Some v11 /\ M (loc+ᵢ($44)) = Some v12 /\
+    M (loc+ᵢ($48)) = Some v13 /\ M (loc+ᵢ($52)) = Some v14 /\
+    M (loc+ᵢ($56)) = Some v15 /\ M (loc+ᵢ($60)) = Some v16.
+
+Definition align_context (Ms: Memory)(O: RState) :=
   let (R,F) := O in word_aligned_R R#l1 /\ word_aligned_R R#l2 /\ 
-      let (R',F') := right_win 1 (R,F) in word_aligned_R R'#sp.
+      let (R',F') := left_win 2 (R,F) in word_aligned_R R'#sp /\ memort_context R'#sp Ms.
 
 Definition normal_cursor(O: RState) :=
   let (R,_) := O in R#npc = R#pc +ᵢ ($4).
@@ -143,9 +152,10 @@ Definition overflow_pre_cond : Cond :=
     let (CP,S) := W in
     let (Cu,Cs) := CP in
     let '(MP,Q,D) := S in
+    let (Mu,Ms) := MP in
     let (R,F) := Q in
-    set_function (cursor_Q Q) overflow_handler Cs /\ normal_cursor Q /\
-    handler_context R /\ align_context Q /\ single_mask R#cwp R#wim /\ D = nil /\ f_context F.
+    set_function (cursor_Q Q) underflow_handler Cs /\ normal_cursor Q /\
+    handler_context R /\ align_context Ms Q /\ single_mask2 R#cwp R#wim /\ D = nil /\ f_context F.
 
 Definition overflow_post_cond : Cond :=
   fun W =>
@@ -153,32 +163,7 @@ Definition overflow_post_cond : Cond :=
     let (Cu,Cs) := CP in
     let '(MP,Q,_) := S in
     let (R,F) := Q in
-    single_mask (pre_cwp 2 R) R#wim.
-
-Lemma get_range7:
-  forall w,
-    get_range 0 7 w = w &ᵢ ($255).
-Proof.
-  intros.
-  unfolds.
-  mauto.
-Qed.
-
-Lemma ModeDeq:
-  forall O,
-    sup_mode_Q O ->
-    usr_mode_Q O ->
-    False.
-Proof.
-  intros.
-  unfolds in H.
-  unfolds in H0.
-  destruct O.
-  unfolds in H.
-  unfolds in H0.
-  rewrite H in H0.
-  inverts H0.
-Qed.
+    single_mask (post_cwp 2 R) R#wim.
 
 Lemma AnnulDeq:
   forall R,
@@ -193,319 +178,453 @@ Proof.
   inverts H0.
 Qed.
 
-
-Lemma Mask_When_Shiftl:
-  forall cwp wim,
-    0 <= Int.unsigned cwp <= 7 ->
-    single_mask cwp wim ->
-    single_mask cwp +ᵢ ($ 7) wim <<ᵢ ($ 7).
+Lemma left_left_same :
+  forall (i:GenReg) R1 R2 F R1' R2' F1 F2,
+      f_context F ->
+      left_win 2 (R1,F) = (R1',F1) ->
+      left_win 2 (R2,F) = (R2',F2) ->
+      R1' sp = R2' sp.
 Proof.
   intros.
-  destruct H.
-  unfolds in H0.
-  unfolds.
-  rewrite <- H0.
-  unfolds.
-  clear H0.
+  unfolds in H.
+  destruct H as (
+    P_w00 & P_w01 & P_w02 & P_w03 & P_w04 & P_w05 & P_w06 & P_w07 &
+    P_w10 & P_w11 & P_w12 & P_w13 & P_w14 & P_w15 & P_w16 & P_w17 &
+    P_w20 & P_w21 & P_w22 & P_w23 & P_w24 & P_w25 & P_w26 & P_w27 &
+    P_w30 & P_w31 & P_w32 & P_w33 & P_w34 & P_w35 & P_w36 & P_w37 & 
+    P_w40 & P_w41 & P_w42 & P_w43 & P_w44 & P_w45 & P_w46 & P_w47 & 
+    P_w50 & P_w51 & P_w52 & P_w53 & P_w54 & P_w55 & P_w56 & P_w57 & 
+    P_w60 & P_w61 & P_w62 & P_w63 & P_w64 & P_w65 & P_w66 & P_w67 & 
+    P_w70 & P_w71 & P_w72 & P_w73 & P_w74 & P_w75 & P_w76 & P_w77 & 
+    P_w80 & P_w81 & P_w82 & P_w83 & P_w84 & P_w85 & P_w86 & P_w87 & 
+    P_w90 & P_w91 & P_w92 & P_w93 & P_w94 & P_w95 & P_w96 & P_w97 & 
+    P_wa0 & P_wa1 & P_wa2 & P_wa3 & P_wa4 & P_wa5 & P_wa6 & P_wa7 & 
+    P_wb0 & P_wb1 & P_wb2 & P_wb3 & P_wb4 & P_wb5 & P_wb6 & P_wb7 & 
+    P_wc0 & P_wc1 & P_wc2 & P_wc3 & P_wc4 & P_wc5 & P_wc6 & P_wc7 & H).
+  substs.
+  unfold left_win in *.
+  asserts_rewrite ((Z.to_nat 2) = 2%nat) in *. compute. auto.
+  unfold left_iter in *.
+  unfold left in *.
+  unfold right in *.
+  simpl in H0.
+  inverts H0.
+  simpl in H1.
+  inverts H1.
 
-  int auto;
-  remember (Int.unsigned cwp) as n;
-  clear Heqn;
+  destruct i;
+  substs;
+  compute; auto.
 
-  assert (n = 0 \/ n = 1 \/ n = 2 \/ n = 3 \/ n = 4 \/ n = 5
-   \/ n = 6 \/ n = 7); mauto;
-  clear H H1;
-  destruct H0; substs; mauto.
 Qed.
 
-Lemma Mask_When_Shiftr:
-  forall cwp wim,
-    0 <= Int.unsigned cwp <= 7 ->
-    single_mask cwp wim ->
-    (1 <= Int.unsigned cwp <= 7 /\ single_mask cwp -ᵢ ($ 1) wim >>ᵢ ($ 1)) \/ (Int.unsigned cwp = 0 /\ wim >>ᵢ ($ 1) = ($0)).
+Lemma mask_cwp_post:
+    forall R,
+    0 <= Int.unsigned (R#cwp) <= 7 ->
+    single_mask2 (post_cwp 1 R) (R#wim) ->
+    win_masked (post_cwp 1 R) R = false.
 Proof.
+  unfold single_mask2.
+  unfold win_masked.
+  unfold post_cwp.
+  unfold Asm.N.
   intros.
-  destruct H.
-  unfolds in H0.
-  rewrite <- H0.
-  clear H0.
+  remember (get_R cwp R) as cwp.
+  remember (get_R wim R) as wim.
+  clear R Heqcwp Heqwim.
+  asserts_rewrite (((($ 1) <<ᵢ ((cwp +ᵢ ($ 1)) modu ($ 8))) &ᵢ wim) = ($ 0)). {
+    smt solve.
+    skip.
+  }
+  asserts_rewrite (($ 0) !=ᵢ ($ 0) = false). {
+    mauto.
+  }
+  auto.
+Admitted.
+
+
+Lemma mask_cwp_post2:
+    forall R,
+    0 <= Int.unsigned (R#cwp) <= 7 ->
+    single_mask2 (R#cwp) (R#wim) ->
+    win_masked (post_cwp 1 R) R = false.
+Proof.
+  unfold single_mask2.
+  unfold win_masked.
+  unfold post_cwp.
+  unfold Asm.N.
+  intros.
+  remember (get_R cwp R) as cwp.
+  remember (get_R wim R) as wim.
+  clear R Heqcwp Heqwim.
+  asserts_rewrite (((($ 1) <<ᵢ ((cwp +ᵢ ($ 1)) modu ($ 8))) &ᵢ wim) = ($ 0)). {
+    smt solve.
+    skip.
+  }
+  asserts_rewrite (($ 0) !=ᵢ ($ 0) = false). {
+    mauto.
+  }
+  auto.
+Admitted.
+
+Lemma mask_cwp_pre1:
+    forall R,
+    0 <= Int.unsigned (R#cwp) <= 7 ->
+    single_mask (post_cwp 1 R) (get_R wim R) ->
+    win_masked (pre_cwp 1 R) R = false.
+Proof.
   unfold single_mask.
-
-  remember (Int.unsigned cwp) as n;
-
-  assert (n = 0 \/ n = 1 \/ n = 2 \/ n = 3 \/ n = 4 \/ n = 5
-   \/ n = 6 \/ n = 7). mauto.
-
-  destruct H0. right. split; auto.
-  int auto. rewrite <- Heqn.
-  rewrite H0. int auto.
-
-  clear H H1.
-
-  destruct H0; left; split; int auto;
-  rewrite <- Heqn.
-  rewrite H.
-  int auto.
-
-  destruct H.
-  rewrite H.
-  int auto.
-
-  destruct H.
-  rewrite H.
-  int auto.
-
-  destruct H.
-  rewrite H.
-  int auto.
-    destruct H.
-  rewrite H.
-  int auto.
-    destruct H.
-  rewrite H.
-  int auto.
-
-  rewrite H.
-  int auto.
-Qed.
-
-(* align 4 *)
-Lemma align_div:
-  forall n,
-  0<= (Int.unsigned n) <= Int.max_unsigned - 4 ->
-  Int.divu (n+ᵢ ($4)) ($4) = (Int.divu (n) ($4)) +ᵢ ($1).
-Proof.
+  unfold win_masked.
+  unfold post_cwp.
+  unfold pre_cwp.
+  unfold Asm.N.
   intros.
-  int auto; remember (Int.unsigned n).
-  apply (Z_div_plus_full z 1 4).
-  omega.
-  split;
-  clear Heqz n.
-  
-  apply (Z_div_pos z 4).
-  omega.
+  remember (get_R cwp R) as cwp.
+  remember (get_R wim R) as wim.
+  clear R Heqcwp Heqwim.
+  rewrite <- H0.
+  asserts_rewrite (((($ 1) <<ᵢ (((cwp +ᵢ ($ 8)) -ᵢ ($ 1)) modu ($ 8))) &ᵢ (($ 1) <<ᵢ ((cwp +ᵢ ($ 1)) modu ($ 8)))) = ($ 0)). {
+    smt solve.
+    skip.
+  }
+  asserts_rewrite (($ 0) !=ᵢ ($ 0) = false). {
+    mauto.
+  }
   auto.
-  
-  apply (Z_div_le z (4294967295*4) 4).
-  omega.
-  omega.
-Qed.
+Admitted.
 
+Lemma Mask_When_Left:
+  forall cwp n1 n2 n3 n4,
+        0 <= Int.unsigned cwp <= 7 ->
+        single_mask2 cwp n1 ->
+        n2 = n1 <<ᵢ ($ 1) ->
+        n3 = n1 >>ᵢ ($ 7) ->
+        n4 = n3 |ᵢ n2 -> 
+        single_mask2 ((cwp +ᵢ ($1)) modu Asm.N) (n4 &ᵢ ($ 255)).
+Proof.
+  unfold single_mask2.
+  unfold Asm.N.
+  unfold Word.
+  intros.
+  smt solve.
+Admitted.
 
-(*
-Int.modu_divu:
-  forall x y : int32,
-  y <> Int.zero -> x modu y = x -ᵢ (Int.mul (Int.divu x y) y)
-*)
+Lemma cwp_cycle_post:
+  forall R,
+      0 <= Int.unsigned (R#cwp) <= 7 ->
+      0 <= Int.unsigned (post_cwp 1 R) <= 7.
+Proof.
+  unfold post_cwp.
+  unfold Asm.N.
+  intros.
+  smt solve.
+Admitted.
 
-Lemma align_modu:
-  forall n,
-  0<= (Int.unsigned n) <= Int.max_unsigned - 4 ->
-  Int.modu n ($4) = ($0) ->
-  Int.modu (n+ᵢ ($4)) ($4) = ($0).
+Lemma Left_Left_is_Left2:
+  forall R Rl' R' Rl Rll F Fl' F' Fl Fll,
+  f_context F ->
+  (Rl', Fl') = left_win 1 (R, F) ->
+  (get_R r30 Rl') = (get_R r30 R') ->
+   F' = Fl' ->
+  (Rl, Fl) = left_win 1 (R', F') ->
+  (Rll, Fll) = left_win 2 (R, F) ->
+  (get_R r14 Rll) = (get_R r14 Rl).
 Proof.
   intros.
-  
-  assert (n modu ($4) = n -ᵢ (Int.mul (Int.divu n ($4)) ($4))).
-  apply Int.modu_divu. {
-    clear n H H0. mauto.
-  }
-  assert ((n+ᵢ$4) modu ($4) = (n+ᵢ$4) -ᵢ (Int.mul (Int.divu (n+ᵢ$4) ($4)) ($4))).
-  apply Int.modu_divu. {
-    clear n H H0 H1. mauto.
-  }
-  rewrite H0 in H1.
-  clear H0.
-  assert ((n +ᵢ ($ 4)) -ᵢ (Int.mul (Int.divu n +ᵢ ($ 4) $ 4) $ 4) = ($0)). {
-  clear H2.
-  asserts_rewrite (Int.divu (n+ᵢ ($4)) ($4) = (Int.divu (n) ($4)) +ᵢ ($1)).
-  apply align_div; eauto.
-  
-  asserts_rewrite ((Int.mul (Int.divu n $ 4) +ᵢ ($ 1) $ 4) = 
-    (Int.mul (Int.divu n ($4)) $4) +ᵢ (Int.mul ($1) ($4))). {
-    apply (Int.mul_add_distr_l (Int.divu n $ 4) ($1) ($4)).
-  }
-  
-  asserts_rewrite ((Int.mul $ 1 $ 4) = ($4)). {
-    
-    apply Int.mul_commut.
-  }
-  
-  asserts_rewrite ((n +ᵢ ($ 4)) -ᵢ ((Int.mul (Int.divu n $ 4) $ 4) +ᵢ ($ 4)) = n -ᵢ (Int.mul (Int.divu n $ 4) $ 4)).
-  apply (Int.sub_shifted n (Int.mul (Int.divu n $ 4) $ 4) ($4)).
-  eauto.
-}
-  rewrite H2.
-  apply H0.
+  unfolds in H.
+  destruct H as (
+    P_w00 & P_w01 & P_w02 & P_w03 & P_w04 & P_w05 & P_w06 & P_w07 &
+    P_w10 & P_w11 & P_w12 & P_w13 & P_w14 & P_w15 & P_w16 & P_w17 &
+    P_w20 & P_w21 & P_w22 & P_w23 & P_w24 & P_w25 & P_w26 & P_w27 &
+    P_w30 & P_w31 & P_w32 & P_w33 & P_w34 & P_w35 & P_w36 & P_w37 & 
+    P_w40 & P_w41 & P_w42 & P_w43 & P_w44 & P_w45 & P_w46 & P_w47 & 
+    P_w50 & P_w51 & P_w52 & P_w53 & P_w54 & P_w55 & P_w56 & P_w57 & 
+    P_w60 & P_w61 & P_w62 & P_w63 & P_w64 & P_w65 & P_w66 & P_w67 & 
+    P_w70 & P_w71 & P_w72 & P_w73 & P_w74 & P_w75 & P_w76 & P_w77 & 
+    P_w80 & P_w81 & P_w82 & P_w83 & P_w84 & P_w85 & P_w86 & P_w87 & 
+    P_w90 & P_w91 & P_w92 & P_w93 & P_w94 & P_w95 & P_w96 & P_w97 & 
+    P_wa0 & P_wa1 & P_wa2 & P_wa3 & P_wa4 & P_wa5 & P_wa6 & P_wa7 & 
+    P_wb0 & P_wb1 & P_wb2 & P_wb3 & P_wb4 & P_wb5 & P_wb6 & P_wb7 & 
+    P_wc0 & P_wc1 & P_wc2 & P_wc3 & P_wc4 & P_wc5 & P_wc6 & P_wc7 & H).
+  unfold left_win in *.
+  asserts_rewrite ((Z.to_nat 1) = 1%nat) in *. compute. auto.
+  asserts_rewrite ((Z.to_nat 2) = 2%nat) in *. compute. auto.
+  unfold left_iter in *.
+  unfold left in *.
+  substs.
+  simpl in H0.
+  inverts H0.
+  simpl in H1.
+  inverts H1.
+  simpl in H3.
+  inverts H3.
+  simpl in H4.
+  inverts H4.
+  simpl.
+  compute.
+  compute in H.
+  substs;
+  compute; auto.
 Qed.
 
-(* Int.modu_and: *)
-Lemma align_and:
-  forall n,
-  0<= (Int.unsigned n) <= Int.max_unsigned - 4 ->
-  n &ᵢ ($3) = ($0) ->
-  (n+ᵢ ($4)) &ᵢ ($3) = ($0).
+Lemma Left1_Right2_is_Right1:
+  forall R Rl R' Rr Rrr F Fl F' Fr Frr,
+  f_context F ->
+  (Rl, Fl) = left_win 1 (R, F) ->
+  (get_R r17 Rl) = (get_R r17 R') /\ (get_R r18 Rl) = (get_R r18 R')->
+  F' = Fl ->
+  (Rrr, Frr) = right_win 2 (R', F') ->
+  (Rr, Fr) = right_win 1 (R, F) ->
+  (get_R r17 Rrr) = (get_R r17 Rr) /\ (get_R r18 Rrr) = (get_R r18 Rr).
 Proof.
   intros.
-  assert ($3 = $4 -ᵢ Int.one). auto.
-  rewrite H1 in H0. rewrite H1. clear H1.
-  asserts_rewrite (n &ᵢ (($ 4) -ᵢ Int.one) = (n modu ($4))) in H0.
-  symmetry.
-      
-    apply (Int.modu_and n ($4) ($2)).
-    auto.
- asserts_rewrite ((n +ᵢ ($ 4)) &ᵢ (($ 4) -ᵢ Int.one) = ((n +ᵢ ($ 4)) modu ($4))).
-  symmetry.
-      apply (Int.modu_and (n +ᵢ ($ 4)) ($4) ($2)).
-    auto.
-    apply align_modu; eauto.
-Qed.
+  unfolds in H.
+  destruct H as (
+    P_w00 & P_w01 & P_w02 & P_w03 & P_w04 & P_w05 & P_w06 & P_w07 &
+    P_w10 & P_w11 & P_w12 & P_w13 & P_w14 & P_w15 & P_w16 & P_w17 &
+    P_w20 & P_w21 & P_w22 & P_w23 & P_w24 & P_w25 & P_w26 & P_w27 &
+    P_w30 & P_w31 & P_w32 & P_w33 & P_w34 & P_w35 & P_w36 & P_w37 & 
+    P_w40 & P_w41 & P_w42 & P_w43 & P_w44 & P_w45 & P_w46 & P_w47 & 
+    P_w50 & P_w51 & P_w52 & P_w53 & P_w54 & P_w55 & P_w56 & P_w57 & 
+    P_w60 & P_w61 & P_w62 & P_w63 & P_w64 & P_w65 & P_w66 & P_w67 & 
+    P_w70 & P_w71 & P_w72 & P_w73 & P_w74 & P_w75 & P_w76 & P_w77 & 
+    P_w80 & P_w81 & P_w82 & P_w83 & P_w84 & P_w85 & P_w86 & P_w87 & 
+    P_w90 & P_w91 & P_w92 & P_w93 & P_w94 & P_w95 & P_w96 & P_w97 & 
+    P_wa0 & P_wa1 & P_wa2 & P_wa3 & P_wa4 & P_wa5 & P_wa6 & P_wa7 & 
+    P_wb0 & P_wb1 & P_wb2 & P_wb3 & P_wb4 & P_wb5 & P_wb6 & P_wb7 & 
+    P_wc0 & P_wc1 & P_wc2 & P_wc3 & P_wc4 & P_wc5 & P_wc6 & P_wc7 & H).
+  unfold left_win in *.
+  unfold right_win in *.
+  asserts_rewrite ((Z.to_nat 1) = 1%nat) in *. compute. auto.
+  asserts_rewrite ((Z.to_nat 2) = 2%nat) in *. compute. auto.
+  unfold right_iter in *.
+  unfold left_iter in *.
+  unfold right in *.
+  unfold left in *.
+  unfold fench in *.
+  unfold replace in *.
 
-Lemma align_plus4_part:
-  forall w,
-  0 <= (Int.unsigned w) <= Int.max_unsigned - 4 ->
-  word_aligned_R w ->
-  word_aligned_R w +ᵢ ($4).
-Proof.
-  intros.
-  unfold word_aligned_R in *.
-  unfold word_aligned in *.
-  unfold get_range in *.
-  asserts_rewrite ((((($ 1) <<ᵢ ($ (1 - 0 + 1))) -ᵢ ($ 1)) <<ᵢ ($ 0)) = ($3)) in *. auto.
-
-  remember ((w &ᵢ ($ 3)) =ᵢ ($ 0)).
-  destruct b; inverts H0.
-
-  assert (if (w &ᵢ ($ 3)) =ᵢ ($ 0) then (w &ᵢ ($ 3)) = ($0) else (w &ᵢ ($ 3)) <> ($ 0)).
-  {
-    apply Int.eq_spec.
-  }
-  rewrite <- Heqb in H0. clear Heqb.
-  asserts_rewrite (((w +ᵢ ($ 4)) &ᵢ ($ 3)) = ($0)).
-  {
-    apply align_and; eauto.
-  }
-  asserts_rewrite (($ 0) =ᵢ ($ 0) = true). apply Int.eq_true.
+  substs.
+  simpl in H0.
+  inverts H0.
+  simpl in H1.
+  inverts H1.
+  simpl in H3.
+  inverts H3.
+  simpl in H4.
+  inverts H4.
+  simpl in H.
+  simpl.
+  compute.
   auto.
 Qed.
 
-Lemma align_out_range3:
-  forall w,
-  (Int.unsigned w) = Int.max_unsigned - 3 ->
-  word_aligned_R w ->
-  word_aligned_R w +ᵢ ($4).
+Lemma Left_Right_is_Nothing:
+  forall R R' Rl Rr F F' Fl Fr,
+  f_context F ->
+  (Rl, Fl) = left_win 1 (R, F) ->
+  get_R r14 R' = get_R r14 Rl  /\ get_R r17 R' = get_R r17 Rl /\  get_R r18 R' = get_R r18 Rl ->
+  F' = Fl ->
+  (Rr, Fr) = right_win 1 (R', F') ->
+  Rr#r14 = R#r14 /\ Rr#r17 = R#r17 /\ Rr#r18 = R#r18.
 Proof.
   intros.
-  unfold word_aligned_R in *.
-  unfold word_aligned in *.
-  unfold get_range in *.
-  asserts_rewrite ((((($ 1) <<ᵢ ($ (1 - 0 + 1))) -ᵢ ($ 1)) <<ᵢ ($ 0)) = ($3)) in *. auto.
-
-  assert (w = $(Int.max_unsigned - 3)).
-  symmetry.
-  apply (Int.eqm_repr_eq (Int.max_unsigned - 3) w).
-  rewrite H. apply Int.eqm_refl.
-
-  asserts_rewrite (((w +ᵢ ($ 4)) &ᵢ ($ 3)) = ($ 0)).
-  {
-   clear H0. rewrite H1.
-   clear H1. auto.
-  }
-  asserts_rewrite (($ 0) =ᵢ ($ 0) = true). apply Int.eq_true.
+  unfolds in H.
+  destruct H as (
+    P_w00 & P_w01 & P_w02 & P_w03 & P_w04 & P_w05 & P_w06 & P_w07 &
+    P_w10 & P_w11 & P_w12 & P_w13 & P_w14 & P_w15 & P_w16 & P_w17 &
+    P_w20 & P_w21 & P_w22 & P_w23 & P_w24 & P_w25 & P_w26 & P_w27 &
+    P_w30 & P_w31 & P_w32 & P_w33 & P_w34 & P_w35 & P_w36 & P_w37 & 
+    P_w40 & P_w41 & P_w42 & P_w43 & P_w44 & P_w45 & P_w46 & P_w47 & 
+    P_w50 & P_w51 & P_w52 & P_w53 & P_w54 & P_w55 & P_w56 & P_w57 & 
+    P_w60 & P_w61 & P_w62 & P_w63 & P_w64 & P_w65 & P_w66 & P_w67 & 
+    P_w70 & P_w71 & P_w72 & P_w73 & P_w74 & P_w75 & P_w76 & P_w77 & 
+    P_w80 & P_w81 & P_w82 & P_w83 & P_w84 & P_w85 & P_w86 & P_w87 & 
+    P_w90 & P_w91 & P_w92 & P_w93 & P_w94 & P_w95 & P_w96 & P_w97 & 
+    P_wa0 & P_wa1 & P_wa2 & P_wa3 & P_wa4 & P_wa5 & P_wa6 & P_wa7 & 
+    P_wb0 & P_wb1 & P_wb2 & P_wb3 & P_wb4 & P_wb5 & P_wb6 & P_wb7 & 
+    P_wc0 & P_wc1 & P_wc2 & P_wc3 & P_wc4 & P_wc5 & P_wc6 & P_wc7 & H).
+  unfold left_win in *.
+  unfold right_win in *.
+  asserts_rewrite ((Z.to_nat 1) = 1%nat) in *. compute. auto.
+  unfold left_iter in *.
+  unfold right_iter in *.
+  unfold right in *.
+  unfold left in *.
+  unfold rev in *.
+  unfold fench in *.
+  unfold replace in *.
+  substs.
+  simpl in H0.
+  inverts H0.
+  simpl in H1.
+  compute in H1.
+  simpl in H3.
+  inverts H3.
+  compute.
   auto.
+Qed. 
+
+
+Lemma hold_context_right:
+  forall R R' F F',
+    f_context F->
+    right_win 1 (R,F) = (R',F') ->
+    f_context F'.
+Proof.
+  intros.
+  unfold right_win in *.
+  asserts_rewrite ((Z.to_nat 1) = 1%nat) in *. compute. auto.
+  unfold right_iter in *.
+  unfolds in H.
+  destruct H as (
+    P_w00 & P_w01 & P_w02 & P_w03 & P_w04 & P_w05 & P_w06 & P_w07 &
+    P_w10 & P_w11 & P_w12 & P_w13 & P_w14 & P_w15 & P_w16 & P_w17 &
+    P_w20 & P_w21 & P_w22 & P_w23 & P_w24 & P_w25 & P_w26 & P_w27 &
+    P_w30 & P_w31 & P_w32 & P_w33 & P_w34 & P_w35 & P_w36 & P_w37 & 
+    P_w40 & P_w41 & P_w42 & P_w43 & P_w44 & P_w45 & P_w46 & P_w47 & 
+    P_w50 & P_w51 & P_w52 & P_w53 & P_w54 & P_w55 & P_w56 & P_w57 & 
+    P_w60 & P_w61 & P_w62 & P_w63 & P_w64 & P_w65 & P_w66 & P_w67 & 
+    P_w70 & P_w71 & P_w72 & P_w73 & P_w74 & P_w75 & P_w76 & P_w77 & 
+    P_w80 & P_w81 & P_w82 & P_w83 & P_w84 & P_w85 & P_w86 & P_w87 & 
+    P_w90 & P_w91 & P_w92 & P_w93 & P_w94 & P_w95 & P_w96 & P_w97 & 
+    P_wa0 & P_wa1 & P_wa2 & P_wa3 & P_wa4 & P_wa5 & P_wa6 & P_wa7 & 
+    P_wb0 & P_wb1 & P_wb2 & P_wb3 & P_wb4 & P_wb5 & P_wb6 & P_wb7 & 
+    P_wc0 & P_wc1 & P_wc2 & P_wc3 & P_wc4 & P_wc5 & P_wc6 & P_wc7 & H).
+  substs.
+  unfold right in *.
+  unfold left in *.
+  unfold fench in *.
+  unfold replace in *.
+
+  inverts H0.
+  unfolds.
+  jauto.
+Qed.
+
+Lemma hold_context_left:
+  forall R R' F F',
+    f_context F->
+    left_win 1 (R,F) = (R',F') ->
+    f_context F'.
+Proof.
+  intros.
+  unfold left_win in *.
+  asserts_rewrite ((Z.to_nat 1) = 1%nat) in *. compute. auto.
+  unfold left_iter in *.
+  unfolds in H.
+  destruct H as (
+    P_w00 & P_w01 & P_w02 & P_w03 & P_w04 & P_w05 & P_w06 & P_w07 &
+    P_w10 & P_w11 & P_w12 & P_w13 & P_w14 & P_w15 & P_w16 & P_w17 &
+    P_w20 & P_w21 & P_w22 & P_w23 & P_w24 & P_w25 & P_w26 & P_w27 &
+    P_w30 & P_w31 & P_w32 & P_w33 & P_w34 & P_w35 & P_w36 & P_w37 & 
+    P_w40 & P_w41 & P_w42 & P_w43 & P_w44 & P_w45 & P_w46 & P_w47 & 
+    P_w50 & P_w51 & P_w52 & P_w53 & P_w54 & P_w55 & P_w56 & P_w57 & 
+    P_w60 & P_w61 & P_w62 & P_w63 & P_w64 & P_w65 & P_w66 & P_w67 & 
+    P_w70 & P_w71 & P_w72 & P_w73 & P_w74 & P_w75 & P_w76 & P_w77 & 
+    P_w80 & P_w81 & P_w82 & P_w83 & P_w84 & P_w85 & P_w86 & P_w87 & 
+    P_w90 & P_w91 & P_w92 & P_w93 & P_w94 & P_w95 & P_w96 & P_w97 & 
+    P_wa0 & P_wa1 & P_wa2 & P_wa3 & P_wa4 & P_wa5 & P_wa6 & P_wa7 & 
+    P_wb0 & P_wb1 & P_wb2 & P_wb3 & P_wb4 & P_wb5 & P_wb6 & P_wb7 & 
+    P_wc0 & P_wc1 & P_wc2 & P_wc3 & P_wc4 & P_wc5 & P_wc6 & P_wc7 & H).
+  substs.
+  unfold left in *.
+  unfold fench in *.
+  unfold replace in *.
+
+  inverts H0.
+  unfolds.
+  jauto.
 Qed.
 
 
-Lemma align_out_range2:
-  forall w,
-  (Int.unsigned w) = Int.max_unsigned - 2 ->
-  word_aligned_R w ->
-  word_aligned_R w +ᵢ ($4).
+Lemma Post3_minus_1_is_2:
+  forall R R',
+  0 <= Int.unsigned R#cwp <= 7 ->
+  single_mask2 (post_cwp 1 R) (get_R wim R) ->
+  get_R cwp R' = post_cwp 1 R ->
+  single_mask2 (get_R cwp R') (get_R wim R).
 Proof.
+  unfold single_mask2.
+  unfold post_cwp.
+  unfold Asm.N.
   intros.
-  unfold word_aligned_R in *.
-  unfold word_aligned in *.
-  unfold get_range in *.
-  asserts_rewrite ((((($ 1) <<ᵢ ($ (1 - 0 + 1))) -ᵢ ($ 1)) <<ᵢ ($ 0)) = ($3)) in *. auto.
-
-  assert (w = $(Int.max_unsigned - 2)).
-  symmetry.
-  apply (Int.eqm_repr_eq (Int.max_unsigned - 2) w).
-  rewrite H. apply Int.eqm_refl.
-
-  assert ((w &ᵢ ($ 3)) = ($ 1)).
-  {
-  clear H. rewrite H1. auto.
-  }
-  rewrite H2 in H0.
-  asserts_rewrite (($ 1) =ᵢ ($ 0) = false) in H0.
-  auto. inverts H0.
+  remember (get_R cwp R) as cwp.
+  clear Heqcwp.
+  remember ( get_R Asm.cwp R') as cwp'.
+  clear Heqcwp'.
+  remember (get_R wim R) as wim.
+  clear Heqwim.
+  clear R R'.
+  sort.
+  rewrite H1.
+  smt solve; skip.
 Qed.
 
-Lemma align_out_range1:
-  forall w,
-  (Int.unsigned w) = Int.max_unsigned - 1 ->
-  word_aligned_R w ->
-  word_aligned_R w +ᵢ ($4).
+Lemma Post2_minus_1_is_1:
+  forall R R',
+  0 <= Int.unsigned R#cwp <= 7 ->
+  single_mask2 (get_R cwp R) (get_R wim R) ->
+  get_R cwp R' = post_cwp 1 R ->
+ single_mask (post_cwp 1 R') (get_R wim R).
 Proof.
+  unfold single_mask2.
+  unfold single_mask.
+  unfold post_cwp.
+  unfold Asm.N.
   intros.
-  unfold word_aligned_R in *.
-  unfold word_aligned in *.
-  unfold get_range in *.
-  asserts_rewrite ((((($ 1) <<ᵢ ($ (1 - 0 + 1))) -ᵢ ($ 1)) <<ᵢ ($ 0)) = ($3)) in *. auto.
-
-  assert (w = $(Int.max_unsigned - 1)).
-  symmetry.
-  apply (Int.eqm_repr_eq (Int.max_unsigned - 1) w).
-  rewrite H. apply Int.eqm_refl.
-
-  assert ((w &ᵢ ($ 3)) = ($ 2)).
-  {
-  clear H. rewrite H1. auto.
-  }
-  rewrite H2 in H0.
-  asserts_rewrite (($ 2) =ᵢ ($ 0) = false) in H0.
-  auto. inverts H0.
+  remember (get_R cwp R) as cwp.
+  clear Heqcwp.
+  remember ( get_R Asm.cwp R') as cwp'.
+  clear Heqcwp'.
+  remember (get_R wim R) as wim.
+  clear Heqwim.
+  clear R R'.
+  sort.
+  rewrite H1.
+  smt solve; skip.
 Qed.
 
-Lemma align_out_range0:
-  forall w,
-  (Int.unsigned w) = Int.max_unsigned ->
-  word_aligned_R w ->
-  word_aligned_R w +ᵢ ($4).
+Lemma Right2_Right2_Same:
+  forall R R' Rrr Rrr' F F' Frr Frr',
+  f_context F->
+  (Rrr, Frr) = right_win 2 (R, F) ->
+  F' = F ->
+  (Rrr', Frr') = right_win 2 (R', F') ->
+  (get_R r17 Rrr') = (get_R r17 Rrr) /\ (get_R r18 Rrr') = (get_R r18 Rrr).
 Proof.
   intros.
-  unfold word_aligned_R in *.
-  unfold word_aligned in *.
-  unfold get_range in *.
-  asserts_rewrite ((((($ 1) <<ᵢ ($ (1 - 0 + 1))) -ᵢ ($ 1)) <<ᵢ ($ 0)) = ($3)) in *. auto.
+  unfolds in H.
+  destruct H as (
+    P_w00 & P_w01 & P_w02 & P_w03 & P_w04 & P_w05 & P_w06 & P_w07 &
+    P_w10 & P_w11 & P_w12 & P_w13 & P_w14 & P_w15 & P_w16 & P_w17 &
+    P_w20 & P_w21 & P_w22 & P_w23 & P_w24 & P_w25 & P_w26 & P_w27 &
+    P_w30 & P_w31 & P_w32 & P_w33 & P_w34 & P_w35 & P_w36 & P_w37 & 
+    P_w40 & P_w41 & P_w42 & P_w43 & P_w44 & P_w45 & P_w46 & P_w47 & 
+    P_w50 & P_w51 & P_w52 & P_w53 & P_w54 & P_w55 & P_w56 & P_w57 & 
+    P_w60 & P_w61 & P_w62 & P_w63 & P_w64 & P_w65 & P_w66 & P_w67 & 
+    P_w70 & P_w71 & P_w72 & P_w73 & P_w74 & P_w75 & P_w76 & P_w77 & 
+    P_w80 & P_w81 & P_w82 & P_w83 & P_w84 & P_w85 & P_w86 & P_w87 & 
+    P_w90 & P_w91 & P_w92 & P_w93 & P_w94 & P_w95 & P_w96 & P_w97 & 
+    P_wa0 & P_wa1 & P_wa2 & P_wa3 & P_wa4 & P_wa5 & P_wa6 & P_wa7 & 
+    P_wb0 & P_wb1 & P_wb2 & P_wb3 & P_wb4 & P_wb5 & P_wb6 & P_wb7 & 
+    P_wc0 & P_wc1 & P_wc2 & P_wc3 & P_wc4 & P_wc5 & P_wc6 & P_wc7 & H).
 
-  assert (w = $(Int.max_unsigned)).
-  symmetry.
-  apply (Int.eqm_repr_eq (Int.max_unsigned) w).
-  rewrite H. apply Int.eqm_refl.
+  unfold right_win in *.
+  asserts_rewrite ((Z.to_nat 2) = 2%nat) in *. compute. auto.
+  unfold right_iter in *.
+  unfold right in *.
+  unfold left in *.
+  unfold fench in *.
+  unfold replace in *.
 
-  assert ((w &ᵢ ($ 3)) = ($ 3)).
-  {
-  clear H. rewrite H1. auto.
-  }
-  rewrite H2 in H0.
-  asserts_rewrite (($ 3) =ᵢ ($ 0) = false) in H0.
-  auto. inverts H0.
-Qed.
-
-Lemma align_my_word:
-  forall n,
-  0<= (Int.unsigned n) <= Int.max_unsigned - 4 \/
-  Int.unsigned n = Int.max_unsigned - 3 \/
-  Int.unsigned n = Int.max_unsigned - 2 \/
-  Int.unsigned n = Int.max_unsigned - 1 \/
-  Int.unsigned n = Int.max_unsigned.
-Proof.
-  intros.
-  assert(0<= (Int.unsigned n) <= Int.max_unsigned).
-  apply Int.unsigned_range_2.
-  int auto.
+  substs.
+  simpl in H2.
+  inverts H2.
+  simpl in H0.
+  inverts H0.
+  compute.
+  auto.
 Qed.
 
 
@@ -514,23 +633,68 @@ Lemma align_plus4:
   word_aligned_R w ->
   word_aligned_R w +ᵢ ($4).
 Proof.
+  unfold word_aligned_R.
+  unfold word_aligned.
+  unfold get_range.
   intros.
-  assert (0<= (Int.unsigned w) <= Int.max_unsigned - 4 \/
-  Int.unsigned w = Int.max_unsigned - 3 \/
-  Int.unsigned w = Int.max_unsigned - 2 \/
-  Int.unsigned w = Int.max_unsigned - 1 \/
-  Int.unsigned w = Int.max_unsigned).
-  apply align_my_word.
-  destruct H0.
-  apply align_plus4_part; eauto.
-  destruct H0.
-  apply align_out_range3; eauto.
-  destruct H0.
-  apply align_out_range2; eauto.
-    destruct H0.
-  apply align_out_range1; eauto.
-  apply align_out_range0; eauto.
+  remember ((w &ᵢ (((($ 1) <<ᵢ ($ (1 - 0 + 1))) -ᵢ ($ 1)) <<ᵢ ($ 0))) =ᵢ ($ 0) ).
+  destruct b; try inverts H.
+  assert ((w &ᵢ (((($ 1) <<ᵢ ($ (1 - 0 + 1))) -ᵢ ($ 1)) <<ᵢ ($ 0)))  = ($ 0)). {
+    smt solve; skip.
+  }
+  clear Heqb.
+  asserts_rewrite(((w +ᵢ ($ 4)) &ᵢ (((($ 1) <<ᵢ ($ (1 - 0 + 1))) -ᵢ ($ 1)) <<ᵢ ($ 0))) = ($ 0)). {
+    smt solve; skip.
+  }
+  asserts_rewrite(($ 0) =ᵢ ($ 0) = true). iauto. auto.
 Qed.
+
+
+
+Lemma Right_Right_is_Right2:
+  forall R R' Rr Rr' Rrr F F' Fr Fr' Frr,
+  f_context F ->
+  (Rrr, Frr) = right_win 2 (R, F) ->
+  F' = Fr ->
+  (Rr, Fr) = right_win 1 (R, F) ->
+  (Rr', Fr') = right_win 1 (R', F') ->
+  (get_R r17 Rr') = (get_R r17 Rrr) /\ (get_R r18 Rr') = (get_R r18 Rrr).
+Proof.
+  intros.
+  unfolds in H.
+  destruct H as (
+    P_w00 & P_w01 & P_w02 & P_w03 & P_w04 & P_w05 & P_w06 & P_w07 &
+    P_w10 & P_w11 & P_w12 & P_w13 & P_w14 & P_w15 & P_w16 & P_w17 &
+    P_w20 & P_w21 & P_w22 & P_w23 & P_w24 & P_w25 & P_w26 & P_w27 &
+    P_w30 & P_w31 & P_w32 & P_w33 & P_w34 & P_w35 & P_w36 & P_w37 & 
+    P_w40 & P_w41 & P_w42 & P_w43 & P_w44 & P_w45 & P_w46 & P_w47 & 
+    P_w50 & P_w51 & P_w52 & P_w53 & P_w54 & P_w55 & P_w56 & P_w57 & 
+    P_w60 & P_w61 & P_w62 & P_w63 & P_w64 & P_w65 & P_w66 & P_w67 & 
+    P_w70 & P_w71 & P_w72 & P_w73 & P_w74 & P_w75 & P_w76 & P_w77 & 
+    P_w80 & P_w81 & P_w82 & P_w83 & P_w84 & P_w85 & P_w86 & P_w87 & 
+    P_w90 & P_w91 & P_w92 & P_w93 & P_w94 & P_w95 & P_w96 & P_w97 & 
+    P_wa0 & P_wa1 & P_wa2 & P_wa3 & P_wa4 & P_wa5 & P_wa6 & P_wa7 & 
+    P_wb0 & P_wb1 & P_wb2 & P_wb3 & P_wb4 & P_wb5 & P_wb6 & P_wb7 & 
+    P_wc0 & P_wc1 & P_wc2 & P_wc3 & P_wc4 & P_wc5 & P_wc6 & P_wc7 & H).
+  unfold right_win in *.
+  asserts_rewrite ((Z.to_nat 2) = 2%nat) in *. compute. auto.
+  asserts_rewrite ((Z.to_nat 1) = 1%nat) in *. compute. auto.
+  unfold right_iter in *.
+  unfold right in *.
+  unfold left in *.
+  unfold rev in *.
+  unfold fench in *.
+  unfold replace in *.
+  substs.
+  simpl in H2.
+  inverts H2.
+  simpl in H0.
+  inverts H0.
+  simpl in H3.
+  inverts H3.
+  compute.
+  auto.
+Qed. 
 
 
 
@@ -539,912 +703,116 @@ Lemma cwp_cycle_pre:
       0 <= Int.unsigned (R#cwp) <= 7 ->
       0 <= Int.unsigned (pre_cwp 1 R) <= 7.
 Proof.
-  intros.
-  unfold pre_cwp.
-  unfold Asm.N.
-  remember (get_R cwp R) as cwp.
-  clear Heqcwp.
-
-  remember (Int.unsigned cwp) as n.
-
-  assert (n = 0 \/ n = 1 \/ n = 2 \/ n = 3 \/ n = 4 \/ n = 5
-   \/ n = 6 \/ n = 7). mauto. clear H.
-  rename H0 into H.
-
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (7 mod 8 = 7); try solve [compute; auto];
-  omega.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (8 mod 8 = 0); try solve [compute; auto];
-  omega.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (9 mod 8 = 1); try solve [compute; auto];
-  omega.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (10 mod 8 = 2); try solve [compute; auto];
-  omega.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (11 mod 8 = 3); try solve [compute; auto];
-  omega.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (12 mod 8 = 4); try solve [compute; auto];
-  omega.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (13 mod 8 = 5); try solve [compute; auto];
-  omega.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (14 mod 8 = 6); try solve [compute; auto];
-  omega.
-Qed.
-
-
-Lemma post_is_pre:
-    forall R R',
-    0 <= Int.unsigned (R#cwp) <= 7 ->
-    get_R cwp R' = post_cwp 1 R  ->
-    get_R cwp R = pre_cwp 1 R'.
-Proof.
-  intros.
-  unfold post_cwp in H0.
-  unfold pre_cwp.
-  rewrite H0. clear H0.
-  unfold Asm.N.
-  remember (get_R cwp R) as cwp.
-  clear Heqcwp.
-
-  remember (Int.unsigned cwp) as n.
-
-  assert (n = 0 \/ n = 1 \/ n = 2 \/ n = 3 \/ n = 4 \/ n = 5
-   \/ n = 6 \/ n = 7). mauto. clear H.
-  rename H0 into H.
-
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-Qed.
-
-
-Lemma pre_is_post:
-    forall R R',
-    0 <= Int.unsigned (R'#cwp) <= 7 ->
-    get_R cwp R  = pre_cwp 1 R' ->
-    get_R cwp R' = post_cwp 1 R.
-Proof.
-  intros.
-  unfold pre_cwp in H0.
-  unfold post_cwp.
-  rewrite H0. clear H0.
-  unfold Asm.N.
-  remember (get_R cwp R') as cwp.
-  clear Heqcwp.
-
-  remember (Int.unsigned cwp) as n.
-
-  assert (n = 0 \/ n = 1 \/ n = 2 \/ n = 3 \/ n = 4 \/ n = 5
-   \/ n = 6 \/ n = 7). mauto. clear H.
-  rename H0 into H.
-
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-    compute.
-    rewrite <- H.
-    symmetry.
-    apply Int.repr_unsigned.
-  }
-Qed.
-
-Lemma cwp_cycle_post:
-  forall R,
-      0 <= Int.unsigned (R#cwp) <= 7 ->
-      0 <= Int.unsigned (post_cwp 1 R) <= 7.
-Proof.
-  intros.
   unfold post_cwp.
   unfold Asm.N.
-  remember (get_R cwp R) as cwp.
-  clear Heqcwp.
-
-  remember (Int.unsigned cwp) as n.
-
-  assert (n = 0 \/ n = 1 \/ n = 2 \/ n = 3 \/ n = 4 \/ n = 5
-   \/ n = 6 \/ n = 7). mauto. clear H.
-  rename H0 into H.
-
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (1 mod 8 = 1); try solve [compute; auto];
-  omega.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (2 mod 8 = 2); try solve [compute; auto];
-  omega.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (3 mod 8 = 3); try solve [compute; auto];
-  omega.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (4 mod 8 = 4); try solve [compute; auto];
-  omega.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (5 mod 8 = 5); try solve [compute; auto];
-  omega.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (6 mod 8 = 6); try solve [compute; auto];
-  omega.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (7 mod 8 = 7); try solve [compute; auto];
-  omega.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; simpl;
-  asserts_rewrite (8 mod 8 = 0); try solve [compute; auto];
-  omega.
+  intros.
+  smt solve; skip.
 Qed.
 
-Lemma mask_cwp:
+
+Lemma Post2_add_1_is_3:
+  forall R R',
+  single_mask2 (get_R cwp R) (get_R wim R) ->
+  get_R cwp R' = pre_cwp 1 R ->
+  single_mask2 (post_cwp 1 R') (get_R wim R).
+Proof.
+  unfold single_mask2.
+  unfold single_mask.
+  unfold post_cwp.
+  unfold pre_cwp.
+  unfold Asm.N.
+  intros.
+  remember (get_R cwp R) as cwp.
+  clear Heqcwp.
+  remember ( get_R Asm.cwp R') as cwp'.
+  clear Heqcwp'.
+  remember (get_R wim R) as wim.
+  clear Heqwim.
+  clear R R'.
+  sort.
+  rewrite H0.
+  smt solve; skip.
+Qed.
+
+
+
+Lemma Post1_add_1_is_2:
+  forall R R',
+  single_mask (post_cwp 1 R) (get_R wim R) ->
+  get_R cwp R' = pre_cwp 1 R ->
+  single_mask2 (get_R cwp R') (get_R wim R).
+Proof.
+  unfold single_mask2.
+  unfold single_mask.
+  unfold post_cwp.
+  unfold pre_cwp.
+  unfold Asm.N.
+  intros.
+  remember (get_R cwp R) as cwp.
+  clear Heqcwp.
+  remember ( get_R Asm.cwp R') as cwp'.
+  clear Heqcwp'.
+  remember (get_R wim R) as wim.
+  clear Heqwim.
+  clear R R'.
+  sort.
+  rewrite H0.
+  smt solve; skip.
+Qed.
+
+
+
+Lemma mask_cwp_post3:
     forall R,
     0 <= Int.unsigned (R#cwp) <= 7 ->
-    single_mask R#cwp (R#wim) ->
+    single_mask2 (post_cwp 1 R) (get_R wim R) ->
+    win_masked (post_cwp 1 R) R = false.
+Proof.
+  unfold single_mask2.
+  unfold win_masked.
+  unfold post_cwp.
+  unfold Asm.N.
+  intros.
+  remember (get_R cwp R) as cwp.
+  remember (get_R wim R) as wim.
+  clear R Heqcwp Heqwim.
+  asserts_rewrite (((($ 1) <<ᵢ ((cwp +ᵢ ($ 1)) modu ($ 8))) &ᵢ wim) = ($ 0)). {
+  smt solve; skip.
+  }
+  asserts_rewrite (($ 0) !=ᵢ ($ 0) = false). {
+    mauto.
+  }
+  auto.
+Qed.
+
+
+Lemma mask_cwp_pre2:
+    forall R,
+    0 <= Int.unsigned (R#cwp) <= 7 ->
+    single_mask2 (get_R cwp R) (get_R wim R) ->
     win_masked (pre_cwp 1 R) R = false.
 Proof.
-  intros.
-  unfolds in H0.
-  unfolds.
-  rewrite <- H0.
-  clear H0.
-  unfold pre_cwp.
-  unfold Asm.N.
-  remember (get_R cwp R) as cwp.
-  clear Heqcwp.
-
-  remember (Int.unsigned cwp) as n.
-
- assert (n = 0 \/ n = 1 \/ n = 2 \/ n = 3 \/ n = 4 \/ n = 5
-   \/ n = 6 \/ n = 7). mauto. clear H.
-
-  asserts_rewrite (((($ 1) <<ᵢ (((cwp +ᵢ ($ 8)) -ᵢ ($ 1)) modu ($ 8))) &ᵢ (($ 1) <<ᵢ cwp)) = ($0)).
-
-
-  rename H0 into H.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-
-  auto.
-Qed.
-
-
-Lemma mask_cwp_post:
-    forall R,
-    0 <= Int.unsigned (R#cwp) <= 7 ->
-    single_mask R#cwp (R#wim) ->
-    win_masked (post_cwp 1 R) R = false.
-Proof.
-  intros.
-  unfolds in H0.
-  unfolds.
-  rewrite <- H0.
-  clear H0.
-  unfold post_cwp.
-  unfold Asm.N.
-  remember (get_R cwp R) as cwp.
-  clear Heqcwp.
-
-  remember (Int.unsigned cwp) as n.
-
- assert (n = 0 \/ n = 1 \/ n = 2 \/ n = 3 \/ n = 4 \/ n = 5
-   \/ n = 6 \/ n = 7). mauto. clear H.
-
-  asserts_rewrite (((($ 1) <<ᵢ ((cwp +ᵢ ($ 1)) modu ($ 8))) &ᵢ (($ 1) <<ᵢ cwp)) = ($0)).
-
-
-  rename H0 into H.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-
-  auto.
-Qed.
-
-Lemma pre_pre_is_pre2:
-  forall R R',
-  0 <= Int.unsigned (R#cwp) <= 7 ->
-  get_R cwp R' = post_cwp 1 R ->
-  (pre_cwp 1 R) = (pre_cwp 2 R').
-Proof.
-  intros.
-  unfold post_cwp in H0.
-  unfold pre_cwp.
-
-  rewrite H0.
-  clear H0.
-
-  unfold Asm.N.
-  remember (get_R cwp R) as cwp.
-  clear Heqcwp.
-
-
-  remember (Int.unsigned cwp) as n.
-
- assert (n = 0 \/ n = 1 \/ n = 2 \/ n = 3 \/ n = 4 \/ n = 5
-   \/ n = 6 \/ n = 7). mauto. clear H.
-
-  rename H0 into H.
-
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-  }
-  destruct H.
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-  }
-  {
-    substs.
-    int auto;
-    rewrite H;
-    simpl;
-    int auto;
-    int auto;
-    mauto.
-  }
-Qed.
-
-
-Lemma mask_cwp_post2:
-    forall R,
-    0 <= Int.unsigned (R#cwp) <= 7 ->
-    single_mask (pre_cwp 1 R) (R#wim) ->
-    win_masked (post_cwp 1 R) R = false.
-Proof.
-  intros.
-  unfolds in H0.
-  unfolds.
-  unfold pre_cwp in H0.
-  rewrite <- H0.
-  clear H0.
-  unfold post_cwp.
-  unfold Asm.N.
-  remember (get_R cwp R) as cwp.
-  clear Heqcwp.
-
-  remember (Int.unsigned cwp) as n.
-
- assert (n = 0 \/ n = 1 \/ n = 2 \/ n = 3 \/ n = 4 \/ n = 5
-   \/ n = 6 \/ n = 7). mauto. clear H.
-
-  asserts_rewrite (((($ 1) <<ᵢ ((cwp +ᵢ ($ 1)) modu ($ 8))) &ᵢ
-   (($ 1) <<ᵢ (((cwp +ᵢ ($ 8)) -ᵢ ($ 1)) modu ($ 8)))) = ($0)).
-
-
-  rename H0 into H.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  destruct H.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-  int auto; rewrite <- Heqn;
-  try rewrite H; int auto; mauto;
-  simpl; int auto; mauto.
-
-  auto.
-Qed.
-
-Lemma Win_Xor:
-forall cwp x y,
-    0 <= Int.unsigned cwp <= 7 ->
-    single_mask (cwp+ᵢ ($7)) y ->
-     (1 <= Int.unsigned cwp <= 7 /\ single_mask(cwp -ᵢ ($1)) x) \/
-     (Int.unsigned cwp = 0 /\ x = ($0)) ->
-    single_mask ((cwp +ᵢ Asm.N -ᵢ ($1)) modu Asm.N) (y |ᵢ  x)&ᵢ($255).
-Proof.
-  intros.
-  unfold single_mask in H0.
-  unfold single_mask in H1.
+  unfold single_mask2.
   unfold single_mask.
+  unfold win_masked.
+  unfold post_cwp.
+  unfold pre_cwp.
   unfold Asm.N.
-  remember (Int.unsigned cwp) as n.
-
-  assert (n = 0 \/ n = 1 \/ n = 2 \/ n = 3 \/ n = 4 \/ n = 5
-   \/ n = 6 \/ n = 7). mauto.
-  clear H.
-  destruct H2.
-  destruct H1.
-  {
-    destruct H1.
-    false.
-    omega.
+  intros.
+  remember (get_R cwp R) as cwp.
+  remember (get_R wim R) as wim.
+  clear R Heqcwp Heqwim.
+  rewrite <- H0.
+  asserts_rewrite ((($ 1) <<ᵢ (((cwp +ᵢ ($ 8)) -ᵢ ($ 1)) modu ($ 8))) &ᵢ (($ 1) <<ᵢ ((cwp +ᵢ ($ 2)) modu ($ 8))) = ($ 0)). {
+    smt solve; skip.
   }
-  {
-    destruct H1.
-    clear H1.
-    substs.
-    int auto;
-    rewrite H.
-    unfold Z.shiftl.
-    simpl. auto.
+  asserts_rewrite (($ 0) !=ᵢ ($ 0) = false). {
     mauto.
-    simpl.
-    assert (7 mod 8 = 7).
-    compute. auto.
-    omega.
-    unfold Z.shiftl.
-    int auto.
-    simpl. omega.
-    simpl. omega.
-    int auto;
-    unfold Z.shiftl;
-    simpl; try omega.
-    int auto;
-    simpl; try omega.
   }
-
-  destruct H.
-  destruct H1.
-  destruct H1.
-  clear H1.
-  substs.
-  int auto;
-  rewrite H.
-    unfold Z.shiftl.
-    simpl. auto.
-    mauto.
-    simpl.
-    assert (8 mod 8 = 0).
-    compute. auto.
-    omega.
-    unfold Z.shiftl.
-    int auto; simpl; omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-    int auto; simpl. omega.
-    omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-  false. rewrite H in H1. inverts H1. inverts H2.
-
-  destruct H.
-  destruct H1.
-  destruct H1.
-  clear H1.
-  substs.
-  int auto;
-  rewrite H.
-    unfold Z.shiftl.
-    simpl. auto.
-    mauto.
-    simpl.
-    assert (9 mod 8 = 1).
-    compute. auto.
-    omega.
-    unfold Z.shiftl.
-    int auto; simpl; omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-    int auto; simpl. omega.
-    omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-  false. rewrite H in H1. inverts H1. inverts H2.
-
-  destruct H.
-  destruct H1.
-  destruct H1.
-  clear H1.
-  substs.
-  int auto;
-  rewrite H.
-    unfold Z.shiftl.
-    simpl. auto.
-    mauto.
-    simpl.
-    assert (10 mod 8 = 2).
-    compute. auto.
-    omega.
-    unfold Z.shiftl.
-    int auto; simpl; omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-    int auto; simpl. omega.
-    omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-  false. rewrite H in H1. inverts H1. inverts H2.
-
-
-  destruct H.
-  destruct H1.
-  destruct H1.
-  clear H1.
-  substs.
-  int auto;
-  rewrite H.
-    unfold Z.shiftl.
-    simpl. auto.
-    mauto.
-    simpl.
-    assert (11 mod 8 = 3).
-    compute. auto.
-    omega.
-    unfold Z.shiftl.
-    int auto; simpl; omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-    int auto; simpl. omega.
-    omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-  false. rewrite H in H1. inverts H1. inverts H2.
-
-
-  destruct H.
-  destruct H1.
-  destruct H1.
-  clear H1.
-  substs.
-  int auto;
-  rewrite H.
-    unfold Z.shiftl.
-    simpl. auto.
-    mauto.
-    simpl.
-    assert (12 mod 8 = 4).
-    compute. auto.
-    omega.
-    unfold Z.shiftl.
-    int auto; simpl; omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-    int auto; simpl. omega.
-    omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-  false. rewrite H in H1. inverts H1. inverts H2.
-
-
-  destruct H.
-  destruct H1.
-  destruct H1.
-  clear H1.
-  substs.
-  int auto;
-  rewrite H.
-    unfold Z.shiftl.
-    simpl. auto.
-    mauto.
-    simpl.
-    assert (13 mod 8 = 5).
-    compute. auto.
-    omega.
-    unfold Z.shiftl.
-    int auto; simpl; omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-    int auto; simpl. omega.
-    omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-  false. rewrite H in H1. inverts H1. inverts H2.
-
-
-  destruct H1.
-  destruct H1.
-  clear H1.
-  substs.
-  int auto;
-  rewrite H.
-    unfold Z.shiftl.
-    simpl. auto.
-    mauto.
-    simpl.
-    assert (14 mod 8 = 6).
-    compute. auto.
-    omega.
-    unfold Z.shiftl.
-    int auto; simpl; omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-    int auto; simpl. omega.
-    omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-    try unfold Z.shiftl;
-    int auto; simpl; omega.
-  false. rewrite H in H1. inverts H1. inverts H2.
+  auto.
 Qed.
 
-
-Theorem HandleOverflow:
+Theorem HandleUnderflow:
   forall CP S,
     overflow_pre_cond (CP,S) ->
     exists S' E ,Z__ CP S E 30 S'/\
@@ -1488,7 +856,7 @@ Proof.
   (* small changes in one step *)
   assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\ 
           R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#l3 = R#wim /\ R'#l1 = R#l1 /\ R'#l2 = R#l2 /\ R'#sp = R#sp /\ F' = F /\ D' = D). {
+          R'#l3 = R#wim /\ R'#l1 = R#l1 /\ R'#l2 = R#l2 /\ R'#sp = R#sp /\ F' = F /\ D' = D /\ Ms' = Ms). {
   inverts P__.
   (* usr_mode *) {
     false. apply (ModeDeq (R,F)); auto.
@@ -1546,29 +914,31 @@ Proof.
     iauto; apply IVR.
   }
 
-  assert (align_context (R',F')) as ALIGN'. {
+  assert (align_context Ms' (R',F')) as ALIGN'. {
     unfolds.
     splits; try unfolds; try unfolds;
     try asserts_rewrite (get_R r17 R' = get_R r17 R);
     try asserts_rewrite (get_R r18 R' = get_R r18 R); 
     try asserts_rewrite (get_R r30 R' = get_R r30 R);
+    try asserts_rewrite (Ms' = Ms);
     iauto; try apply ALIGN.
     {
       unfolds in ALIGN.
       unfold get_R.
-      remember (right_win 1 (R, F)).
+      remember (left_win 2 (R, F)).
       destruct r as (R1 & F1).
-      remember (right_win 1 (R', F')).
+      remember (left_win 2 (R', F')).
       destruct r as (R2 & F2).
       asserts_rewrite(F' = F) in Heqr0. iauto.
       unfold get_R in ALIGN.
-      asserts_rewrite (R1 r14 = R2 r14) in ALIGN. {
-        apply (right_right_same r14 R R' F R1 R2 F1 F2); iauto.
-      } iauto.
+      asserts_rewrite (R1 sp = R2 sp) in ALIGN. {
+        apply (left_left_same sp R R' F R1 R2 F1 F2); iauto.
+      }
+      splits; iauto.
     }
   }
 
-  assert (single_mask R'#cwp R'#wim /\ single_mask (get_R cwp R') (get_R l3 R') ) as MASK'. {
+  assert (single_mask2 R'#cwp R'#wim /\ single_mask2 (get_R cwp R') (get_R l3 R') ) as MASK'. {
     asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
     asserts_rewrite (get_R wim R' = get_R wim R). iauto.
     asserts_rewrite ((get_R l3 R') = (get_R wim R)). iauto.
@@ -1610,11 +980,13 @@ Proof.
 
 
 
+
+
 (* step 2 *)
 
   assert (not_abort Cs Ms (R,F) D) as NA. {
     unfolds.
-    exists (R,F) D  (or g0 g1 ᵣ l7).
+    exists (R,F) D  (sll l3 ($1)ₙ l4).
     splits.
     - substs. auto.
     - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)); iauto. apply FUNC.
@@ -1637,7 +1009,7 @@ Proof.
   (* small changes in one step *)
   assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
           R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#l3 = R#l3 /\ R'#l1 = R#l1 /\ R'#l2 = R#l2 /\ R'#fp = R#fp /\ F' = F /\ D' = D). {
+          R'#l3 = R#l3 /\ R'#l4 = R#l3 <<ᵢ ($1) /\ R'#l1 = R#l1 /\ R'#l2 = R#l2 /\ R'#fp = R#fp /\ F' = F /\ D' = D /\ Ms' = Ms). {
   inverts P__.
   (* usr_mode *) {
     false. apply (ModeDeq (R,F)); auto.
@@ -1647,7 +1019,7 @@ Proof.
     inverts H10.
     unfolds in H6.
     inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (or g0 g1 ᵣ l7)) as INS. {
+    assert (Cs (cursor_Q (R, F)) = Some (sll l3 ($1)ₙ l4)) as INS. {
     asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)). iauto.
     apply FUNC.
     }
@@ -1658,6 +1030,10 @@ Proof.
     inverts H12; try solve [false].
     inverts H5; try solve [false].
     inverts H4; repeat (split; auto); auto.
+    unfold eval_OpExp in *.
+    destruct (($ (-4096)) <=ᵢ ($ 1) && ($ 1) <=ᵢ ($ 4095));
+    try inverts H7.
+    auto.
     }
 
     (* annul? no !*){
@@ -1696,34 +1072,47 @@ Proof.
     iauto; apply IVR.
   }
 
-  assert (align_context (R',F')) as ALIGN'. {
+  assert (align_context Ms' (R',F')) as ALIGN'. {
     unfolds.
     splits; try unfolds; try unfolds;
     try asserts_rewrite (get_R r17 R' = get_R r17 R);
     try asserts_rewrite (get_R r18 R' = get_R r18 R); 
     try asserts_rewrite (get_R r30 R' = get_R r30 R);
+    try asserts_rewrite (Ms' = Ms);
     iauto; try apply ALIGN.
     {
       unfolds in ALIGN.
       unfold get_R.
-      remember (right_win 1 (R, F)).
+      remember (left_win 2 (R, F)).
       destruct r as (R1 & F1).
-      remember (right_win 1 (R', F')).
+      remember (left_win 2 (R', F')).
       destruct r as (R2 & F2).
       asserts_rewrite(F' = F) in Heqr0. iauto.
       unfold get_R in ALIGN.
-      asserts_rewrite (R1 r14 = R2 r14) in ALIGN. {
-        apply (right_right_same r14 R R' F R1 R2 F1 F2); iauto.
+      asserts_rewrite (R1 sp = R2 sp) in ALIGN. {
+        apply (left_left_same sp R R' F R1 R2 F1 F2); iauto.
       } iauto.
     }
   }
 
-  assert (single_mask R'#cwp R'#wim /\ single_mask (get_R cwp R') (get_R l3 R') ) as MASK'. {
-    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
-    asserts_rewrite ((get_R l3 R') = (get_R l3 R)). iauto.
+
+  assert (single_mask2 R'#cwp R'#wim /\ single_mask2 (R'#cwp) (R'#l3) /\
+          (R'#l4) = (R'#l3) <<ᵢ ($ 1)) as MASK'. {
+    splits.
+    {
+    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
     asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    splits;
     apply MASK.
+    }
+    {
+    asserts_rewrite (get_R l3 R' = get_R l3 R). iauto.
+    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
+    apply MASK.
+    }
+    {
+      asserts_rewrite (get_R l3 R' = get_R l3 R). iauto.
+      apply H.
+    }
   }
 
   assert (D' = []) as DELAY'. {
@@ -1753,13 +1142,11 @@ Proof.
   rename CONT' into CONT.
 
 
-
-
 (* step 3 *)
 
   assert (not_abort Cs Ms (R,F) D) as NA. {
     unfolds.
-    exists (R,F) D  (srl l3 ($1)ₙ g1).
+    exists (R,F) D  (srl l3 (Asm.N-ᵢ($1))ₙ l5).
     splits.
     - substs. auto.
     - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
@@ -1782,7 +1169,8 @@ Proof.
   (* small changes in one step *)
   assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
           R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#l3 = R#l3 /\ R'#g1 = R#l3 >>ᵢ ($1) /\ R'#l1 = R#l1 /\ R'#l2 = R#l2 /\ R'#fp = R#fp /\ F' = F /\ D' = D). {
+          R'#l3 = R#l3 /\ R'#l4 = R#l4 /\ R'#l5 = R#l3 >>ᵢ ($7) /\ 
+          R'#g1 = R#g1 /\ R'#l1 = R#l1 /\ R'#l2 = R#l2 /\ R'#fp = R#fp /\ F' = F /\ D' = D /\ Ms' = Ms). {
   inverts P__.
   (* usr_mode *) {
     false. apply (ModeDeq (R,F)); auto.
@@ -1792,7 +1180,7 @@ Proof.
     inverts H10.
     unfolds in H6.
     inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (srl l3 ($1)ₙ g1)) as INS. {
+    assert (Cs (cursor_Q (R, F)) = Some (srl l3 (Asm.N-ᵢ($1))ₙ l5)) as INS. {
     asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4)). iauto.
     apply FUNC.
     }
@@ -1804,7 +1192,8 @@ Proof.
     inverts H5; try solve [false].
     inverts H4; repeat (split; auto); auto.
     unfold eval_OpExp in *.
-    destruct (($ (-4096)) <=ᵢ ($ 1) && ($ 1) <=ᵢ ($ 4095));
+    unfold Asm.N in *.
+    destruct (($ (-4096)) <=ᵢ (($ 8) -ᵢ ($ 1)) && (($ 8) -ᵢ ($ 1)) <=ᵢ ($ 4095));
     try inverts H7.
     auto.
     }
@@ -1845,47 +1234,50 @@ Proof.
     iauto; apply IVR.
   }
 
-  assert (align_context (R',F')) as ALIGN'. {
+  assert (align_context Ms' (R',F')) as ALIGN'. {
     unfolds.
     splits; try unfolds; try unfolds;
     try asserts_rewrite (get_R r17 R' = get_R r17 R);
     try asserts_rewrite (get_R r18 R' = get_R r18 R); 
     try asserts_rewrite (get_R r30 R' = get_R r30 R);
+    try asserts_rewrite (Ms' = Ms);
     iauto; try apply ALIGN.
     {
       unfolds in ALIGN.
       unfold get_R.
-      remember (right_win 1 (R, F)).
+      remember (left_win 2 (R, F)).
       destruct r as (R1 & F1).
-      remember (right_win 1 (R', F')).
+      remember (left_win 2 (R', F')).
       destruct r as (R2 & F2).
       asserts_rewrite(F' = F) in Heqr0. iauto.
       unfold get_R in ALIGN.
-      asserts_rewrite (R1 r14 = R2 r14) in ALIGN. {
-        apply (right_right_same r14 R R' F R1 R2 F1 F2); iauto.
+      asserts_rewrite (R1 sp = R2 sp) in ALIGN. {
+        apply (left_left_same sp R R' F R1 R2 F1 F2); iauto.
       } iauto.
     }
   }
 
-  assert (single_mask R'#cwp R'#wim /\ single_mask (R'#cwp) (R'#l3) /\
-              ((1 <= Int.unsigned (R'#cwp) <= 7 /\ single_mask (R'#cwp) -ᵢ ($ 1) (R'#g1)) \/
-              (Int.unsigned (R'#cwp) = 0 /\ (R'#g1) = ($0)))) as MASK'. {
+  assert (single_mask2 R'#cwp R'#wim /\ single_mask2 R'#cwp R'#l3 /\ R'#l4 = R'#l3 <<ᵢ ($ 1) /\ R'#l5 = R'#l3 >>ᵢ ($ 7)) as MASK'. {
     splits.
     {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
     asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-    }
-    {
-    asserts_rewrite (get_R l3 R' = get_R l3 R). iauto.
     asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
     apply MASK.
     }
     {
-      asserts_rewrite (get_R g1 R' = (get_R l3 R) >>ᵢ ($ 1)). iauto.
-      asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-      apply Mask_When_Shiftr; iauto.
-      apply IVR.
+    asserts_rewrite (get_R l3 R' = (get_R l3 R)). iauto.
+    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
+    apply MASK.
+    }
+    {
+    asserts_rewrite (get_R l4 R' = (get_R l4 R)). iauto.
+    asserts_rewrite (get_R l3 R' = (get_R l3 R)). iauto.
+    apply MASK.
+    }
+    {
+      asserts_rewrite (get_R l5 R' = (get_R l3 R) >>ᵢ ($ 7)). iauto.
+      asserts_rewrite (get_R l3 R' = (get_R l3 R)). iauto.
+      auto.
     }
   }
 
@@ -1917,12 +1309,11 @@ Proof.
 
 
 
-
 (* step 4 *)
 
   assert (not_abort Cs Ms (R,F) D) as NA. {
     unfolds.
-    exists (R,F) D  (sll l3 (Asm.N-ᵢ($1))ₙ l4).
+    exists (R,F) D  (or l5 l4 ᵣ l5).
     splits.
     - substs. auto.
     - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
@@ -1945,7 +1336,7 @@ Proof.
   (* small changes in one step *)
   assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
           R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#l4 = R#l3 <<ᵢ($7) /\ R'#g1 = R#g1 /\ R'#l1 = R#l1 /\ R'#l2 = R#l2 /\ R'#fp = R#fp /\ F' = F /\ D' = D). {
+          R'#l5 = R#l5 |ᵢ (R#l4) /\ R'#l1 = R#l1 /\ R'#l2 = R#l2 /\ R'#fp = R#fp /\ F' = F /\ D' = D /\ Ms' = Ms). {
   inverts P__.
   (* usr_mode *) {
     false. apply (ModeDeq (R,F)); auto.
@@ -1955,7 +1346,7 @@ Proof.
     inverts H10.
     unfolds in H6.
     inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (sll l3 (Asm.N-ᵢ($1))ₙ l4)) as INS. {
+    assert (Cs (cursor_Q (R, F)) = Some (or l5 l4 ᵣ l5)) as INS. {
     asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)). iauto.
     apply FUNC.
     }
@@ -1967,8 +1358,6 @@ Proof.
     inverts H5; try solve [false].
     inverts H4; repeat (split; auto); auto.
     unfold eval_OpExp in *.
-    unfold Asm.N in *.
-    destruct (($ (-4096)) <=ᵢ (($ 8) -ᵢ ($ 1)) && (($ 8) -ᵢ ($ 1)) <=ᵢ ($ 4095));
     try inverts H7.
     auto.
     }
@@ -1986,7 +1375,7 @@ Proof.
     splits. {
       asserts_rewrite (get_R pc R' = get_R npc R). iauto.
       asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4)). apply CSR.
       auto.
     }
     {
@@ -2009,47 +1398,41 @@ Proof.
     iauto; apply IVR.
   }
 
-  assert (align_context (R',F')) as ALIGN'. {
+  assert (align_context Ms' (R',F')) as ALIGN'. {
     unfolds.
     splits; try unfolds; try unfolds;
     try asserts_rewrite (get_R r17 R' = get_R r17 R);
     try asserts_rewrite (get_R r18 R' = get_R r18 R); 
     try asserts_rewrite (get_R r30 R' = get_R r30 R);
+    try asserts_rewrite (Ms' = Ms);
     iauto; try apply ALIGN.
     {
       unfolds in ALIGN.
       unfold get_R.
-      remember (right_win 1 (R, F)).
+      remember (left_win 2 (R, F)).
       destruct r as (R1 & F1).
-      remember (right_win 1 (R', F')).
+      remember (left_win 2 (R', F')).
       destruct r as (R2 & F2).
       asserts_rewrite(F' = F) in Heqr0. iauto.
       unfold get_R in ALIGN.
-      asserts_rewrite (R1 r14 = R2 r14) in ALIGN. {
-        apply (right_right_same r14 R R' F R1 R2 F1 F2); iauto.
+      asserts_rewrite (R1 sp = R2 sp) in ALIGN. {
+        apply (left_left_same sp R R' F R1 R2 F1 F2); iauto.
       } iauto.
     }
   }
 
-  assert (single_mask R'#cwp (R'#wim) /\ single_mask (R'#cwp+ᵢ($7)) R'#l4 /\
-              ((1 <= Int.unsigned (R'#cwp) <= 7 /\ single_mask (R'#cwp) -ᵢ ($ 1) (R'#g1)) \/
-              (Int.unsigned (R'#cwp) = 0 /\ (R'#g1) = ($0)))) as MASK'. {
-    splits.
+  assert (single_mask2 R'#cwp (R'#wim) /\ single_mask2 (post_cwp 1 R')(R'#l5&ᵢ($255))) as MASK'. {
+    split.
     {
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    apply MASK.
-    }
-    {
-    asserts_rewrite (get_R l4 R' = (get_R l3 R) <<ᵢ ($ 7)). iauto.
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    apply (Mask_When_Shiftl (get_R cwp R) (get_R r19 R)); iauto.
-    apply IVR.
-    }
-    {
-      asserts_rewrite (get_R g1 R' = get_R g1 R ). iauto.
       asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
+      asserts_rewrite (get_R wim R' = get_R wim R). iauto.
       apply MASK.
+    }
+    {
+    unfold post_cwp.
+    apply (Mask_When_Left (get_R cwp R') R#r19 R#r20 R#r21 R'#r21); iauto.
+    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto. apply IVR.
+    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto. apply MASK.
     }
   }
 
@@ -2081,12 +1464,11 @@ Proof.
 
 
 
-
 (* step 5 *)
 
   assert (not_abort Cs Ms (R,F) D) as NA. {
     unfolds.
-    exists (R,F) D  (or l4 g1 ᵣ g1).
+    exists (R,F) D  (wr g0 l5 ᵣ wim).
     splits.
     - substs. auto.
     - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
@@ -2109,7 +1491,7 @@ Proof.
   (* small changes in one step *)
   assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
           R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#g1 = R#l4 |ᵢ (R#g1) /\ R'#l1 = R#l1 /\ R'#l2 = R#l2 /\ R'#fp = R#fp /\ F' = F /\ D' = D). {
+          R'#l5 = R#l5 /\ R'#sp = R#sp /\ R'#l1 = R#l1 /\ R'#l2 = R#l2  /\ F' = F /\ D' = [(2%nat, wim, R l5)] /\ Ms' = Ms). {
   inverts P__.
   (* usr_mode *) {
     false. apply (ModeDeq (R,F)); auto.
@@ -2119,8 +1501,8 @@ Proof.
     inverts H10.
     unfolds in H6.
     inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (or l4 g1 ᵣ g1)) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)). iauto.
+    assert (Cs (cursor_Q (R, F)) = Some (wr g0 l5 ᵣ wim)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
     apply FUNC.
     }
     rewrite H11 in INS.
@@ -2129,10 +1511,18 @@ Proof.
     {
     inverts H12; try solve [false].
     inverts H5; try solve [false].
-    inverts H4; repeat (split; auto); auto.
+    inverts H10; try solve [false].
+    repeat (split; auto); auto.
+    simpl. unfold set_delay.
     unfold eval_OpExp in *.
-    try inverts H7.
+    try inverts H15.
+    asserts_rewrite (($ 0) xor (R l5) = R l5).
+    apply Int.xor_zero_l. unfold X.
     auto.
+    unfold unexpected_trap in *.
+    unfold trap_type in *.
+    asserts_rewrite (usr_mode R = false) in H4. apply IVR.
+    inverts H4.
     }
 
     (* annul? no !*){
@@ -2144,11 +1534,11 @@ Proof.
   }
   }
 
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  /\ normal_cursor (R',F')) as CSR'. {
     splits. {
       asserts_rewrite (get_R pc R' = get_R npc R). iauto.
       asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
       auto.
     }
     {
@@ -2171,44 +1561,39 @@ Proof.
     iauto; apply IVR.
   }
 
-  assert (align_context (R',F')) as ALIGN'. {
+  assert (align_context Ms' (R',F')) as ALIGN'. {
     unfolds.
     splits; try unfolds; try unfolds;
     try asserts_rewrite (get_R r17 R' = get_R r17 R);
     try asserts_rewrite (get_R r18 R' = get_R r18 R); 
     try asserts_rewrite (get_R r30 R' = get_R r30 R);
+    try asserts_rewrite (Ms' = Ms);
     iauto; try apply ALIGN.
     {
       unfolds in ALIGN.
       unfold get_R.
-      remember (right_win 1 (R, F)).
+      remember (left_win 2 (R, F)).
       destruct r as (R1 & F1).
-      remember (right_win 1 (R', F')).
+      remember (left_win 2 (R', F')).
       destruct r as (R2 & F2).
       asserts_rewrite(F' = F) in Heqr0. iauto.
       unfold get_R in ALIGN.
-      asserts_rewrite (R1 r14 = R2 r14) in ALIGN. {
-        apply (right_right_same r14 R R' F R1 R2 F1 F2); iauto.
+      asserts_rewrite (R1 sp = R2 sp) in ALIGN. {
+        apply (left_left_same sp R R' F R1 R2 F1 F2); iauto.
       } iauto.
     }
   }
 
-  assert (single_mask R'#cwp (R'#wim) /\ single_mask (pre_cwp 1 R')(R'#g1&ᵢ($255))) as MASK'. {
-    split.
-    {
-      asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-      asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-      apply MASK.
-    }
-    asserts_rewrite (get_R g1 R' = (get_R l4 R) |ᵢ (get_R g1 R)). iauto.
-    unfold pre_cwp.
+  assert (single_mask2  (post_cwp 1 R') (R'#l5&ᵢ($255))) as MASK'. {
+    unfold post_cwp.
     asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-     apply Win_Xor; iauto.
-     apply IVR.
+    asserts_rewrite (get_R l5 R' = get_R l5 R). iauto.
+    apply MASK.
   }
 
-  assert (D' = []) as DELAY'. {
-    asserts_rewrite (D' = D). iauto. iauto.
+  assert (D' = [(2%nat, wim, R' l5)]) as DELAY'. {
+    asserts_rewrite (R' l5 = get_R l5 R). iauto.
+    iauto.
   }
 
   assert (f_context F') as CONT'. {
@@ -2234,12 +1619,11 @@ Proof.
   rename CONT' into CONT.
 
 
-
 (* step 6 *)
 
   assert (not_abort Cs Ms (R,F) D) as NA. {
     unfolds.
-    exists (R,F) D  (save g0 g0 ᵣ g0).
+    exists (R,F) [(1%nat, wim, R l5)] (nop).
     splits.
     - substs. auto.
     - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
@@ -2260,9 +1644,9 @@ Proof.
   rewrite DELAY in *.
 
   (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\ R'#g1 = R#g1 /\
-          R'#cwp = (pre_cwp 1 R) /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          D' = D /\ (exists Rx,(Rx,F') = right_win 1 (R,F)) /\ word_aligned_R (get_R sp R')). {
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#l5 = R#l5 /\ R'#sp = R#sp /\ R'#l1 = R#l1 /\ R'#l2 = R#l2  /\ F' = F /\ D' = [(1%nat, wim, R l5)] /\ Ms' = Ms). {
   inverts P__.
   (* usr_mode *) {
     false. apply (ModeDeq (R,F)); auto.
@@ -2272,8 +1656,8 @@ Proof.
     inverts H10.
     unfolds in H6.
     inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (save g0 g0 ᵣ g0)) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)). iauto.
+    assert (Cs (cursor_Q (R, F)) = Some (nop)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
     apply FUNC.
     }
     rewrite H11 in INS.
@@ -2282,48 +1666,9 @@ Proof.
     {
     inverts H12; try solve [false].
     inverts H5; try solve [false].
-    inverts H6.
-    unfold dec_win in *.
-    destruct (win_masked (pre_cwp 1 R) R).
-    simpl in H13. try false.
-    unfold negb in H13.
-    remember (right_win 1 (R, F)).
-    destruct r.
-    inverts H13.
-    rename Heqr into RWIN.
-    assert (some_reg_eq R R'0). {
-      apply (Hold_Sth_RightWin R R'0 F F' 1); iauto.
-    }
-    unfolds in H. simpl in H.
-    splits.
-    simpl. asserts_rewrite (R npc = R'0 npc). iauto. auto.
-    simpl. asserts_rewrite (R npc = R'0 npc). iauto. auto.
-    simpl. asserts_rewrite (R r1 = R'0 r1). iauto. auto.
-    simpl. asserts_rewrite (pre_cwp 1 R = R'0 cwp). {
-      symmetry. apply (right_cwp R R'0 F F'); iauto.
-    } iauto.
-    simpl. asserts_rewrite (R annul = R'0 annul). iauto. auto.
-    simpl. asserts_rewrite (R et = R'0 et). iauto. auto.
-    simpl. asserts_rewrite (R trap = R'0 trap). iauto. auto.
-    simpl. asserts_rewrite (R s = R'0 s). iauto. auto.
-    splits; iauto.
-    {
-    unfolds in ALIGN.
-    remember (right_win 1 (R, F)).
-    destruct r as (R1 & F1).
-    inverts RWIN.
-    simpl. apply ALIGN.
+    repeat (split; auto); auto.
     }
 
-    (* trap? no !*){
-    inverts H4.
-    asserts_rewrite (win_masked (pre_cwp 1 R) R = false) in H0. {
-      apply (mask_cwp R); iauto. apply IVR.
-    }
-    simpl in H0.
-    inverts H0.
-    }
-    }
     (* annul? no !*){
     inverts H5.
     false.
@@ -2333,11 +1678,11 @@ Proof.
   }
   }
 
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)/\ normal_cursor (R',F')) as CSR'. {
+  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
     splits. {
       asserts_rewrite (get_R pc R' = get_R npc R). iauto.
       asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
       auto.
     }
     {
@@ -2352,42 +1697,52 @@ Proof.
   assert (handler_context R') as IVR'. {
     unfolds.
     splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
     try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
     try asserts_rewrite ((get_R et R') = (get_R et R));
     try asserts_rewrite ((get_R trap R') = (get_R trap R));
     try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; try apply IVR.
-    unfolds in IVR.
-    asserts_rewrite(Int.unsigned Asm.N - 1 = 7). {
-      unfold Asm.N. mauto.
+    iauto; apply IVR.
+  }
+
+  assert (align_context Ms' (R',F')) as ALIGN'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite (get_R r17 R' = get_R r17 R);
+    try asserts_rewrite (get_R r18 R' = get_R r18 R); 
+    try asserts_rewrite (get_R r30 R' = get_R r30 R);
+    try asserts_rewrite (Ms' = Ms);
+    iauto; try apply ALIGN.
+    {
+      unfolds in ALIGN.
+      unfold get_R.
+      remember (left_win 2 (R, F)).
+      destruct r as (R1 & F1).
+      remember (left_win 2 (R', F')).
+      destruct r as (R2 & F2).
+      asserts_rewrite(F' = F) in Heqr0. iauto.
+      unfold get_R in ALIGN.
+      asserts_rewrite (R1 sp = R2 sp) in ALIGN. {
+        apply (left_left_same sp R R' F R1 R2 F1 F2); iauto.
+      } iauto.
     }
-    asserts_rewrite((get_R cwp R') = pre_cwp 1 R). iauto.
-    apply (cwp_cycle_pre R). apply IVR.
   }
 
 
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R, F)) /\ word_aligned_R (get_R l1 R)
-    /\ word_aligned_R (get_R l2 R) /\ word_aligned_R (get_R sp R')) as ALIGN'. {
-    unfold align_context in ALIGN.
-    splits; iauto.
-  }
-
-  assert (single_mask R'#cwp (R'#g1&ᵢ($255))) as MASK'. {
-    asserts_rewrite ((get_R cwp R') = pre_cwp 1 R). iauto.
-    asserts_rewrite (get_R r1 R' = get_R r1 R). iauto.
+ assert (single_mask2  (post_cwp 1 R') (R'#l5&ᵢ($255))) as MASK'. {
+    unfold post_cwp.
+    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
+    asserts_rewrite (get_R l5 R' = get_R l5 R). iauto.
     apply MASK.
   }
 
-  assert (D' = []) as DELAY'. {
-    asserts_rewrite (D' = D). iauto. iauto.
+  assert (D' = [(1%nat, wim, R' l5)]) as DELAY'. {
+    asserts_rewrite (R' l5 = get_R l5 R). iauto.
+    iauto.
   }
 
-
-  assert (f_context F /\ f_context F') as CONT'. {
-    splits; iauto.
-    assert (exists Rx : RegFile, (Rx, F') = right_win 1 (R, F)). iauto.
-    destruct H0 as (Rx & H0).
-    apply (hold_context R Rx F F'); iauto. 
+  assert (f_context F') as CONT'. {
+    asserts_rewrite (F' = F). iauto. iauto.
   }
 
 
@@ -2395,10 +1750,8 @@ Proof.
     apply (No_Event (Cu,Cs) [None;None;None;None;None] 5 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
     try rewrite DELAY in *; auto.
   }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT.
-  clear Ms D.
-  rename R into R_save.
-  rename F into F_save.
+  clear H P__ IVR MASK CSR DELAY GOAL CONT ALIGN.
+  clear Ms R F D.
   rename Ms' into Ms.
   rename R' into R.
   rename F' into F.
@@ -2413,15 +1766,14 @@ Proof.
 
 
 
-
 (* step 7 *)
 
   assert (not_abort Cs Ms (R,F) D) as NA. {
     unfolds.
-    exists (R,F) D  (wr g0 g1 ᵣ wim).
+    exists (R,F) [(0%nat, wim, R l5)] (nop).
     splits.
     - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
     - unfolds. auto.
   }
 
@@ -2441,7 +1793,7 @@ Proof.
   (* small changes in one step *)
   assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
           R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#g1 = R#g1 /\ R'#sp = R#sp /\ F' = F /\ D' = [(2%nat, wim, R r1)]). {
+          R'#l5 = R#l5 /\ R'#sp = R#sp /\ R'#l1 = R#l1 /\ R'#l2 = R#l2 /\ F' = F /\ D' = [(0%nat, wim, R l5)] /\ Ms' = Ms). {
   inverts P__.
   (* usr_mode *) {
     false. apply (ModeDeq (R,F)); auto.
@@ -2451,8 +1803,8 @@ Proof.
     inverts H10.
     unfolds in H6.
     inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (wr g0 g1 ᵣ wim)) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)). iauto.
+    assert (Cs (cursor_Q (R, F)) = Some (nop)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
     apply FUNC.
     }
     rewrite H11 in INS.
@@ -2461,18 +1813,7 @@ Proof.
     {
     inverts H12; try solve [false].
     inverts H5; try solve [false].
-    inverts H10; try solve [false].
     repeat (split; auto); auto.
-    simpl. unfold set_delay.
-    unfold eval_OpExp in *.
-    try inverts H15.
-    asserts_rewrite (($ 0) xor (R r1) = R r1).
-    apply Int.xor_zero_l. unfold X.
-    auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    asserts_rewrite (usr_mode R = false) in H4. apply IVR.
-    inverts H4.
     }
 
     (* annul? no !*){
@@ -2484,7 +1825,7 @@ Proof.
   }
   }
 
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
     splits. {
       asserts_rewrite (get_R pc R' = get_R npc R). iauto.
       asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
@@ -2511,35 +1852,52 @@ Proof.
     iauto; apply IVR.
   }
 
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R')) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  assert (align_context  Ms' (R',F')) as ALIGN'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite (get_R r17 R' = get_R r17 R);
+    try asserts_rewrite (get_R r18 R' = get_R r18 R); 
+    try asserts_rewrite (get_R r30 R' = get_R r30 R);
+    try asserts_rewrite (Ms' = Ms);
+    iauto; try apply ALIGN.
+    {
+      unfolds in ALIGN.
+      unfold get_R.
+      remember (left_win 2 (R, F)).
+      destruct r as (R1 & F1).
+      remember (left_win 2 (R', F')).
+      destruct r as (R2 & F2).
+      asserts_rewrite(F' = F) in Heqr0. iauto.
+      unfold get_R in ALIGN.
+      asserts_rewrite (R1 sp = R2 sp) in ALIGN. {
+        apply (left_left_same sp R R' F R1 R2 F1 F2); iauto.
+      } iauto.
+    }
   }
 
-  assert (single_mask R'#cwp (R'#g1&ᵢ($255))) as MASK'. {
+
+ assert (single_mask2  (post_cwp 1 R') (R'#l5&ᵢ($255))) as MASK'. {
+    unfold post_cwp.
     asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R r1 R' = get_R r1 R). iauto.
+    asserts_rewrite (get_R l5 R' = get_R l5 R). iauto.
     apply MASK.
   }
 
-  assert (D' = [(2%nat, wim, R' r1)]) as DELAY'. {
-    asserts_rewrite (R' r1 = get_R r1 R). iauto.
+  assert (D' = [(0%nat, wim, R' l5)]) as DELAY'. {
+    asserts_rewrite (R' l5 = get_R l5 R). iauto.
     iauto.
   }
 
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
+  assert (f_context F') as CONT'. {
+    asserts_rewrite (F' = F). iauto. iauto.
   }
+
 
   assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None] 7 (Mu, Ms', (R', F'),D')) as GOAL'. {
     apply (No_Event (Cu,Cs) [None;None;None;None;None;None] 6 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
     try rewrite DELAY in *; auto.
   }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT.
+  clear H P__ IVR MASK CSR DELAY GOAL CONT ALIGN.
   clear Ms R F D.
   rename Ms' into Ms.
   rename R' into R.
@@ -2558,278 +1916,17 @@ Proof.
 
   assert (not_abort Cs Ms (R,F) D) as NA. {
     unfolds.
-    exists (R,F) [(1%nat, wim, R r1)] (nop).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#g1 = R#g1 /\ R'#sp = R#sp /\ F' = F /\ D' = [(1%nat, wim, R r1)]). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (nop)) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R')) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp (R'#g1&ᵢ($255))) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R r1 R' = get_R r1 R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = [(1%nat, wim, R' r1)]) as DELAY'. {
-    asserts_rewrite (R' r1 = get_R r1 R). iauto.
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None] 8 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None] 7 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-
-
-
-
-(* step 9 *)
-
-  assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) [(0%nat, wim, R r1)] (nop).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#g1 = R#g1 /\ R'#sp = R#sp /\ F' = F /\ D' = [(0%nat, wim, R r1)]). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (nop)) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R')) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp (R'#g1&ᵢ($255))) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R r1 R' = get_R r1 R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = [(0%nat, wim, R' r1)]) as DELAY'. {
-    asserts_rewrite (R' r1 = get_R r1 R). iauto.
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None] 9 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None] 8 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-
-
-
-(* step 10 *)
-
-  assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
     remember (exe_delay (R, F) D).
     destruct p.
     exists r d (nop).
     splits.
     - substs. auto.
     - rewrite DELAY in Heqp. unfold exe_delay in Heqp.
-      remember (R # wim <- (R r1)).
+      remember (R # wim <- (R l5)).
       inverts Heqp.
       rewrite Heqr0.
-      asserts_rewrite (cursor_Q (R # wim <- (R r1), F) = cursor_Q (R, F)). iauto.
-      asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
+      asserts_rewrite (cursor_Q (R # wim <- (R l5), F) = cursor_Q (R, F)). iauto.
+      asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
     - unfolds. destruct r. auto.
   }
 
@@ -2848,8 +1945,8 @@ Proof.
 
   (* small changes in one step *)
   assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = (R#g1)&ᵢ ($ 255) /\
-          R'#g1 = R#g1 /\ R'#sp = R#sp /\ F' = F /\ D' = []). {
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = (R#l5)&ᵢ ($ 255) /\
+          R'#l5 = R#l5  /\ R'#l1 = R#l1 /\ R'#l2 = R#l2  /\ R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
   inverts P__.
   (* usr_mode *) {
     false. apply (ModeDeq (R,F)); auto.
@@ -2858,14 +1955,14 @@ Proof.
   (* sup_mode *) {
     inverts H10.
     unfolds in H6.
-    remember (R # wim <- (R r1)).
+    remember (R # wim <- (R l5)).
     inverts H6.
     assert (Cs (cursor_Q (R, F)) = Some (nop)) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
     apply FUNC.
     }
     rewrite Heqr in H11.
-    asserts_rewrite (cursor_Q (R # wim <- (R r1), F) = cursor_Q (R, F)) in H11. iauto.
+    asserts_rewrite (cursor_Q (R # wim <- (R l5), F) = cursor_Q (R, F)) in H11. iauto.
     rewrite H11 in INS.
     clear H11. inverts INS.
 
@@ -2884,11 +1981,11 @@ Proof.
   }
   }
 
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
     splits. {
       asserts_rewrite (get_R pc R' = get_R npc R). iauto.
       asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
       auto.
     }
     {
@@ -2911,155 +2008,33 @@ Proof.
     iauto; apply IVR.
   }
 
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R')) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = (get_R r1 R) &ᵢ ($ 255)). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None] 10 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None] 9 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-
-
-
-
-
-(* step 11 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st l0 sp ₐᵣ).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st l0 sp ₐᵣ)) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite (word_aligned (get_R r14 R) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
+  assert (align_context Ms' (R',F')) as ALIGN'. {
     unfolds.
     splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
+    try asserts_rewrite (get_R r17 R' = get_R r17 R);
+    try asserts_rewrite (get_R r18 R' = get_R r18 R); 
+    try asserts_rewrite (get_R r30 R' = get_R r30 R);
+    try asserts_rewrite (Ms' = Ms);
+    iauto; try apply ALIGN.
+    {
+      unfolds in ALIGN.
+      unfold get_R.
+      remember (left_win 2 (R, F)).
+      destruct r as (R1 & F1).
+      remember (left_win 2 (R', F')).
+      destruct r as (R2 & F2).
+      asserts_rewrite(F' = F) in Heqr0. iauto.
+      unfold get_R in ALIGN.
+      asserts_rewrite (R1 sp = R2 sp) in ALIGN. {
+        apply (left_left_same sp R R' F R1 R2 F1 F2); iauto.
+      } iauto.
+    }
   }
 
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R')) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
+ assert (single_mask2  (post_cwp 1 R') (R'#wim)) as MASK'. {
+    unfold post_cwp.
     asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
+    asserts_rewrite (get_R wim R' = (get_R l5 R) &ᵢ ($ 255)). iauto.
     apply MASK.
   }
 
@@ -3067,1426 +2042,15 @@ Proof.
     iauto.
   }
 
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None] 11 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None] 10 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-
-(* step 12 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st l1 sp+ₐₙ($4)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($4)) as TMP. {
-        apply align_plus4. iauto.
-  }
-
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st l1 sp+ₐₙ($4))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 4) && ($ 4) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 4) = true). unfolds.
-       asserts_rewrite (($ 4) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 4) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 4)) as ALIGN'. {
-    splits; iauto.
+  assert (f_context F') as CONT'. {
     asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
   }
 
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None] 12 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None] 11 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None]8 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None] 7 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
     try rewrite DELAY in *; auto.
   }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-
-
-(* step 13 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st l2 sp+ₐₙ($8)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($8)) as TMP. {
-     asserts_rewrite (($ 8) = ($ 4) +ᵢ ($ 4)). {
-      clear CSR. int auto.
-    }
-
-    rewrite <- Int.add_assoc.
-    apply align_plus4. iauto.
-  }
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st l2 sp+ₐₙ($8))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 8) && ($ 8) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 8) = true). unfolds.
-       asserts_rewrite (($ 8) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 8) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 8)) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None] 13 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None] 12 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-
-
-
-(* step 14 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st l3 sp+ₐₙ($12)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($12)) as TMP. {
-     asserts_rewrite (($ 12) = ($ 8) +ᵢ ($ 4)). {
-      clear CSR. int auto.
-    }
-
-    rewrite <- Int.add_assoc.
-    apply align_plus4. iauto.
-  }
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st l3 sp+ₐₙ($12))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 12) && ($ 12) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 12) = true). unfolds.
-       asserts_rewrite (($ 12) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 12) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 12)) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None] 14 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None] 13 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-
-
-
-(* step 15 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st l4 sp+ₐₙ($16)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($16)) as TMP. {
-     asserts_rewrite (($ 16) = ($ 12) +ᵢ ($ 4)). {
-      clear CSR. int auto.
-    }
-
-    rewrite <- Int.add_assoc.
-    apply align_plus4. iauto.
-  }
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st l4 sp+ₐₙ($16))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 16) && ($ 16) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 16) = true). unfolds.
-       asserts_rewrite (($ 16) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 16) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 16)) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 15 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None] 14 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-
-
-
-
-
-(* step 16 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st l5 sp+ₐₙ($20)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($20)) as TMP. {
-     asserts_rewrite (($ 20) = ($ 16) +ᵢ ($ 4)). {
-      clear CSR. int auto.
-    }
-
-    rewrite <- Int.add_assoc.
-    apply align_plus4. iauto.
-  }
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st l5 sp+ₐₙ($20))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 20) && ($ 20) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 20) = true). unfolds.
-       asserts_rewrite (($ 20) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 20) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 20)) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 16 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 15 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-
-
-
-
-
-(* step 17 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st l6 sp+ₐₙ($24)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($24)) as TMP. {
-     asserts_rewrite (($ 24) = ($ 20) +ᵢ ($ 4)). {
-      clear CSR. int auto.
-    }
-
-    rewrite <- Int.add_assoc.
-    apply align_plus4. iauto.
-  }
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st l6 sp+ₐₙ($24))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ  ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 24) && ($ 24) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 24) = true). unfolds.
-       asserts_rewrite (($ 24) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 24) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 24)) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 17 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 16 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-
-
-
-(* step 18 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st l7 sp+ₐₙ($28)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($28)) as TMP. {
-     asserts_rewrite (($ 28) = ($ 24) +ᵢ ($ 4)). {
-      clear CSR. int auto.
-    }
-
-    rewrite <- Int.add_assoc.
-    apply align_plus4. iauto.
-  }
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st l7 sp+ₐₙ($28))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ  ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 28) && ($ 28) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 28) = true). unfolds.
-       asserts_rewrite (($ 28) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 28) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4)  +ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 28)) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 18 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 17 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-
-
-
-(* step 19 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st i0 sp+ₐₙ($32)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($32)) as TMP. {
-     asserts_rewrite (($ 32) = ($ 28) +ᵢ ($ 4)). {
-      clear CSR. int auto.
-    }
-
-    rewrite <- Int.add_assoc.
-    apply align_plus4. iauto.
-  }
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st i0 sp+ₐₙ($32))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ  ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 32) && ($ 32) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 32) = true). unfolds.
-       asserts_rewrite (($ 32) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 32) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4)  +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 32)) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 19 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 18 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-
-
-(* step 20 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st i1 sp+ₐₙ($36)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($36)) as TMP. {
-     asserts_rewrite (($ 36) = ($ 32) +ᵢ ($ 4)). {
-      clear CSR. int auto.
-    }
-
-    rewrite <- Int.add_assoc.
-    apply align_plus4. iauto.
-  }
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st i1 sp+ₐₙ($36))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ  ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 36) && ($ 36) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 36) = true). unfolds.
-       asserts_rewrite (($ 36) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 36) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4)  +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 36)) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 20 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 19 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear H P__ IVR MASK CSR DELAY GOAL CONT ALIGN.
   clear Ms R F D.
   rename Ms' into Ms.
   rename R' into R.
@@ -4502,962 +2066,14 @@ Proof.
 
 
 
+(* step 9 *)
 
-
-
-
-
-(* step 21 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st i2 sp+ₐₙ($40)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($40)) as TMP. {
-     asserts_rewrite (($ 40) = ($ 36) +ᵢ ($ 4)). {
-      clear CSR. int auto.
-    }
-
-    rewrite <- Int.add_assoc.
-    apply align_plus4. iauto.
-  }
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st i2 sp+ₐₙ($40))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ  ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 40) && ($ 40) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 40) = true). unfolds.
-       asserts_rewrite (($ 40) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 40) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4)+ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 40)) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 21 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 20 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-
-
-(* step 22 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st i3 sp+ₐₙ($44)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($44)) as TMP. {
-     asserts_rewrite (($ 44) = ($ 40) +ᵢ ($ 4)). {
-      clear CSR. int auto.
-    }
-
-    rewrite <- Int.add_assoc.
-    apply align_plus4. iauto.
-  }
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st i3 sp+ₐₙ($44))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ  ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 44) && ($ 44) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 44) = true). unfolds.
-       asserts_rewrite (($ 44) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 44) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($ 4)+ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 44)) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 22 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 21 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-
-
-
-(* step 23 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st i4 sp+ₐₙ($48)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($48)) as TMP. {
-     asserts_rewrite (($ 48) = ($ 44) +ᵢ ($ 4)). {
-      clear CSR. int auto.
-    }
-
-    rewrite <- Int.add_assoc.
-    apply align_plus4. iauto.
-  }
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st i4 sp+ₐₙ($48))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ  ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 48) && ($ 48) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 48) = true). unfolds.
-       asserts_rewrite (($ 48) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 48) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 48)) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 23 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 22 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-
-
-
-
-(* step 24 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st i5 sp+ₐₙ($52)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($52)) as TMP. {
-     asserts_rewrite (($ 52) = ($ 48) +ᵢ ($ 4)). {
-      clear CSR. int auto.
-    }
-
-    rewrite <- Int.add_assoc.
-    apply align_plus4. iauto.
-  }
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st i5 sp+ₐₙ($52))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ  ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 52) && ($ 52) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 52) = true). unfolds.
-       asserts_rewrite (($ 52) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 52) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 52)) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 24 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 23 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-
-
-(* step 25 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st i6 sp+ₐₙ($56)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($56)) as TMP. {
-     asserts_rewrite (($ 56) = ($ 52) +ᵢ ($ 4)). {
-      clear CSR. int auto.
-    }
-
-    rewrite <- Int.add_assoc.
-    apply align_plus4. iauto.
-  }
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st i6 sp+ₐₙ($56))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ  ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 56) && ($ 56) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 56) = true). unfolds.
-       asserts_rewrite (($ 56) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 56) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 56)) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 25 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 24 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-
-
-
-(* step 26 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
-    unfolds.
-    exists (R,F) D  (st i7 sp+ₐₙ($60)).
-    splits.
-    - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
-    - unfolds. auto.
-  }
-
-  (* to P__ *)
-  assert
-  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
-    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
-    auto; try apply IVR.
-  }
-  destruct H as (Ms' & Q' & D' & P__).
-  destruct Q' as (R' & F').
-  clear NA.
-
-  (* deal with delay *)
-  rewrite DELAY in *.
-
-  (* align *)
-  assert (word_aligned_R (get_R r14 R)+ᵢ ($60)) as TMP. {
-     asserts_rewrite (($ 60) = ($ 56) +ᵢ ($ 4)). {
-      clear CSR. int auto.
-    }
-
-    rewrite <- Int.add_assoc.
-    apply align_plus4. iauto.
-  }
-
-  (* small changes in one step *)
-  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#sp = R#sp /\ F' = F /\ D' = []). {
-  inverts P__.
-  (* usr_mode *) {
-    false. apply (ModeDeq (R,F)); auto.
-    apply IVR.
-  }
-  (* sup_mode *) {
-    inverts H10.
-    unfolds in H6.
-    inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (st i7 sp+ₐₙ($60))) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ  ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)). iauto.
-    apply FUNC.
-    }
-    rewrite H11 in INS.
-    clear H11. inverts INS.
-
-    {
-    inverts H12; try solve [false].
-    inverts H5; try solve [false].
-    repeat (split; auto); auto.
-    unfold unexpected_trap in *.
-    unfold trap_type in *.
-    unfold eval_AddrExp in *.
-    unfold eval_OpExp in *.
-    asserts_rewrite(($ (-4096)) <=ᵢ ($ 60) && ($ 60) <=ᵢ ($ 4095) = true) in H4. {
-       clear CSR H4.
-       unfolds.
-       asserts_rewrite (($ (-4096)) <=ᵢ ($ 60) = true). unfolds.
-       asserts_rewrite (($ 60) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
-    }
-    asserts_rewrite (word_aligned (get_R r14 R) +ᵢ ($ 60) = true) in H4. iauto.
-    simpl in H4.
-    inverts H4.
-    }
-
-    (* annul? no !*){
-    inverts H5.
-    false.
-    apply (AnnulDeq R).
-    apply H8. apply IVR.
-    }
-  }
-  }
-
-  assert (R'#pc = R_#pc +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
-    splits. {
-      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
-      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
-      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
-      auto.
-    }
-    {
-      unfolds.
-        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
-        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
-        auto.
-    }
-  }
-
-  {
-  assert (handler_context R') as IVR'. {
-    unfolds.
-    splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
-    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
-    try asserts_rewrite ((get_R et R') = (get_R et R));
-    try asserts_rewrite ((get_R trap R') = (get_R trap R));
-    try asserts_rewrite ((get_R s R') = (get_R s R));
-    iauto; apply IVR.
-  }
-
-  assert ((exists Rx : RegFile, (Rx, F') = right_win 1 (R_save, F_save)) /\
-        word_aligned_R (get_R r17 R_save) /\
-        word_aligned_R (get_R r18 R_save)) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (F' = F). iauto. iauto.
-  }
-
-  assert (single_mask R'#cwp R'#wim) as MASK'. {
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
-  }
-
-  assert (D' = []) as DELAY'. {
-    iauto.
-  }
-
-  assert (f_context F_save /\ f_context F') as CONT'. {
-    splits; iauto.
-    asserts_rewrite(F' = F). iauto. iauto.
-  }
-
-
-
-  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 26 (Mu, Ms', (R', F'),D')) as GOAL'. {
-    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 25 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
-    try rewrite DELAY in *; auto.
-  }
-  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
-  clear Ms R F D.
-  rename Ms' into Ms.
-  rename R' into R.
-  rename F' into F.
-  rename D' into D.
-  rename IVR' into IVR.
-  rename MASK' into MASK.
-  rename CSR' into CSR.
-  rename DELAY' into DELAY.
-  rename GOAL' into GOAL.
-  rename ALIGN' into ALIGN.
-  rename CONT' into CONT.
-  
-
-
-
-(* step 27 *)
-
-   assert (not_abort Cs Ms (R,F) D) as NA. {
+  assert (not_abort Cs Ms (R,F) D) as NA. {
     unfolds.
     exists (R,F) D  (restore g0 g0 ᵣ g0).
     splits.
     - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
     - unfolds. auto.
   }
 
@@ -5476,8 +2092,8 @@ Proof.
 
   (* small changes in one step *)
   assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#cwp = post_cwp 1 R /\ R'#l1 = R_save#l1 /\ R'#l2 = R_save#l2 /\ D' = [] /\ (exists Rx,(Rx,F') = left_win 1 (R,F))). {
+         R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+           R'#cwp = (post_cwp 1 R) /\ D' = D /\ (let (R_Save,F_Save) := left_win 1 (R,F) in R'#l1 = R_Save#l1 /\ R'#l2 = R_Save#l2 /\ R'#o6 = R_Save#o6 /\ R'#r30 = R_Save#r30 /\ F' = F_Save) /\ Ms' = Ms). {
   inverts P__.
   (* usr_mode *) {
     false. apply (ModeDeq (R,F)); auto.
@@ -5488,7 +2104,8 @@ Proof.
     unfolds in H6.
     inverts H6.
     assert (Cs (cursor_Q (R, F)) = Some (restore g0 g0 ᵣ g0)) as INS. {
-    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
     }
     rewrite H11 in INS.
     clear H11. inverts INS.
@@ -5520,29 +2137,3540 @@ Proof.
     splits.
     simpl. asserts_rewrite (post_cwp 1 R = R'0 cwp). {
       symmetry. apply (left_cwp R R'0 F F'); iauto.
-    } iauto.
-
-    {
-    asserts_rewrite (get_R r17 (next R'0 # r0 <- ((get_R r0 R) +ᵢ a)) = get_R r17 R'0). iauto.
-    assert((exists Rx : RegFile, (Rx, F) = right_win 1 (R_save, F_save))). iauto.
-    destruct H0 as (Rx & H0).
-    simpl. apply (right_then_left_il r17 R_save F_save Rx F R F' R'0); iauto.
-    }
-
-    {
-    asserts_rewrite (get_R r18 (next R'0 # r0 <- ((get_R r0 R) +ᵢ a)) = get_R r18 R'0). iauto.
-    assert((exists Rx : RegFile, (Rx, F) = right_win 1 (R_save, F_save))). iauto.
-    destruct H0 as (Rx & H0).
-    simpl. apply (right_then_left_il r18 R_save F_save Rx F R F' R'0); iauto.
-    }
-    auto.
-
+    } 
     iauto.
-
+    iauto.
+    asserts_rewrite (get_R r17 (next R'0 # r0 <- ((get_R r0 R) +ᵢ a)) = get_R r17 R'0). iauto. auto. auto.
     (* trap? no !*){
     inverts H4.
     asserts_rewrite (win_masked (post_cwp 1 R) R = false) in H0. {
       apply (mask_cwp_post R); iauto. apply IVR.
+    }
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; try apply IVR.
+    unfolds in IVR.
+    asserts_rewrite(Int.unsigned Asm.N - 1 = 7). {
+      unfold Asm.N. mauto.
+    }
+    asserts_rewrite((get_R cwp R') = post_cwp 1 R). iauto.
+    apply (cwp_cycle_post R). apply IVR.
+  }
+
+  assert (
+   (let (Rl,Fl) := left_win 1 (R',F') in word_aligned_R Rl#sp /\ memort_context Rl#sp Ms') /\ 
+   (let (Rr,Fr) := right_win 1 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) ) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      remember (left_win 1 (R', F')) as K.
+      destruct K as (Rl,Fl).
+      remember (left_win 1 (R, F)) as K.
+      destruct K as (Rl',Fl').
+      remember (left_win 2 (R, F)) as K.
+      destruct K as (Rll,Fll).
+      asserts_rewrite ((get_R r14 Rll) = (get_R r14 Rl)) in ALIGN. {
+        apply (Left_Left_is_Left2 R Rl' R' Rl Rll F Fl' F' Fl Fll); iauto.
+      }
+      iauto.
+    }
+    {
+      remember (right_win 1 (R', F')) as K.
+      destruct K as (Rr,Fr).
+      remember (left_win 1 (R, F)) as K.
+      destruct K as (Rl,Fl).
+      asserts_rewrite ((get_R r17 Rr)  = (get_R r17 R)). {
+      apply (Left_Right_is_Nothing R R' Rl Rr F F' Fl Fr); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rr)  = (get_R r18 R)). {
+      apply (Left_Right_is_Nothing R R' Rl Rr F F' Fl Fr); iauto.
+      }
+      splits;
+      iauto.
+    }  
+  }
+
+  assert (single_mask2 R'#cwp (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    apply (Post3_minus_1_is_2 R R'); iauto.
+    apply IVR.
+  }
+
+  assert (D' = []) as DELAY'. {
+    asserts_rewrite (D' = D). iauto. iauto.
+  }
+
+
+  assert (f_context F /\ f_context F') as CONT'. {
+    splits; iauto.
+    remember (left_win 1 (R, F)) as K.
+      destruct K as (Rl,Fl).
+    asserts_rewrite(F' = Fl). iauto.
+    apply (hold_context_left R Rl F Fl); iauto. 
+  }
+
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None] 9 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None] 8 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT R.
+  clear Ms D.
+  rename F into F_restore.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+
+(* step 10 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (restore g0 g0 ᵣ g0).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+         R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+           R'#cwp = (post_cwp 1 R) /\ D' = D /\ (let (R_Save,F_Save) := left_win 1 (R,F) in R'#l1 = R_Save#l1 /\ R'#l2 = R_Save#l2 /\ R'#r14 = R_Save#r14 /\ F' = F_Save) /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (restore g0 g0 ᵣ g0)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    unfold inc_win in *.
+    destruct (win_masked (post_cwp 1 R) R).
+    simpl in H13. try false.
+    unfold negb in H13.
+    remember (left_win 1 (R, F)).
+    destruct r.
+    inverts H13.
+    rename Heqr into LWIN.
+    assert (some_reg_eq R R'0). {
+      apply (Hold_Sth_LeftWin R R'0 F F' 1); iauto.
+    }
+    unfolds in H. simpl in H.
+    splits.
+    simpl. asserts_rewrite (R npc = R'0 npc). iauto. auto.
+    simpl. asserts_rewrite (R npc = R'0 npc). iauto. auto.
+    simpl. asserts_rewrite (R annul = R'0 annul). iauto. auto.
+    simpl. asserts_rewrite (R et = R'0 et). iauto. auto.
+    simpl. asserts_rewrite (R trap = R'0 trap). iauto. auto.
+    simpl. asserts_rewrite (R s = R'0 s). iauto. auto.
+    simpl. asserts_rewrite (R Rwim = R'0 Rwim). iauto. auto.
+    splits.
+    simpl. asserts_rewrite (post_cwp 1 R = R'0 cwp). {
+      symmetry. apply (left_cwp R R'0 F F'); iauto.
+    } 
+    iauto.
+    iauto.
+    asserts_rewrite (get_R r17 (next R'0 # r0 <- ((get_R r0 R) +ᵢ a)) = get_R r17 R'0). iauto. auto. auto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite (win_masked (post_cwp 1 R) R = false) in H0. {
+      apply (mask_cwp_post2 R); iauto. apply IVR.
+    }
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; try apply IVR.
+    unfolds in IVR.
+    asserts_rewrite(Int.unsigned Asm.N - 1 = 7). {
+      unfold Asm.N. mauto.
+    }
+    asserts_rewrite((get_R cwp R') = post_cwp 1 R). iauto.
+    apply (cwp_cycle_post R). apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) ) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      remember (left_win 1 (R, F)) as K.
+      destruct K as (Rl',Fl').
+      asserts_rewrite ((get_R r14 R') = (get_R r14 Rl')). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      remember (left_win 1 (R, F)) as K.
+      destruct K as (Rl',Fl').
+      asserts_rewrite ((get_R r14 R') = (get_R r14 Rl')). iauto. iauto.
+    }
+    {
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr,Frr).
+      remember (left_win 1 (R, F)) as K.
+      destruct K as (Rl,Fl).
+      remember (right_win 1 (R, F)) as K.
+      destruct K as (Rr,Fr).
+
+      asserts_rewrite ((get_R r17 Rrr)  = (get_R r17 Rr)). {
+      apply (Left1_Right2_is_Right1  R Rl R' Rr Rrr F Fl F' Fr Frr); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr)  = (get_R r18 Rr)). {
+      apply (Left1_Right2_is_Right1  R Rl R' Rr Rrr F Fl F' Fr Frr); iauto.
+      }
+      iauto.
+    }
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    apply Post2_minus_1_is_1; iauto. apply IVR.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    asserts_rewrite (D' = D). iauto. iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F /\ f_context F') as CONT'. {
+    splits; iauto.
+    remember (left_win 1 (R, F)) as K.
+      destruct K as (Rl,Fl).
+    asserts_rewrite(F' = Fl). iauto.
+    apply (hold_context_left R Rl F Fl); iauto. 
+  }
+
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None] 10 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None] 9 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT R.
+  clear Ms D.
+  rename F into F_restore_restore.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+(* step 11 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld sp ₐᵣ  l0).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      assert (exists v, Ms (R r14) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v1.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld sp ₐᵣ  l0)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite (word_aligned (R r14) = true) in H0. {
+      apply ALIGN.
+    }
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) ) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None] 11 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None] 10 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+
+(* step 12 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($4)) l1).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 4) && ($ 4) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 4) = true). unfolds.
+        asserts_rewrite (($ 4) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 4) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v2.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($4)) as TMP. {
+        apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($4)) l1)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 4) && ($ 4) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 4) = true). unfolds.
+       asserts_rewrite (($ 4) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 4) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 4) ) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None] 12 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None] 11 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+
+(* step 13 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($8)) l2).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 8) && ($ 8) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 8) = true). unfolds.
+        asserts_rewrite (($ 8) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 8) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v3.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($8)) as TMP. {
+     asserts_rewrite (($ 8) = ($ 4) +ᵢ ($ 4)). {
+      clear CSR. int auto.
+    }
+    rewrite <- Int.add_assoc.
+    apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($8)) l2)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 8) && ($ 8) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 8) = true). unfolds.
+       asserts_rewrite (($ 8) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 8) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 8)) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None] 13 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None] 12 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+
+(* step 14 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($12)) l3).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 12) && ($ 12) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 12) = true). unfolds.
+        asserts_rewrite (($ 12) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 12) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v4.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($12)) as TMP. {
+     asserts_rewrite (($ 12) = ($ 8) +ᵢ ($ 4)). {
+      clear CSR. int auto.
+    }
+    rewrite <- Int.add_assoc.
+    apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($12)) l3)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 12) && ($ 12) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 12) = true). unfolds.
+       asserts_rewrite (($ 12) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 12) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 12)) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None] 14 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None] 13 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+(* step 15 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($16)) l4).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 16) && ($ 16) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 16) = true). unfolds.
+        asserts_rewrite (($ 16) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 16) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v5.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($16)) as TMP. {
+     asserts_rewrite (($ 16) = ($ 12) +ᵢ ($ 4)). {
+      clear CSR. int auto.
+    }
+    rewrite <- Int.add_assoc.
+    apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($16)) l4)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 16) && ($ 16) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 16) = true). unfolds.
+       asserts_rewrite (($ 16) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 16) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 16)) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 15 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None] 14 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+(* step 16 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($20)) l5).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 20) && ($ 20) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 20) = true). unfolds.
+        asserts_rewrite (($ 20) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 20) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v6.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($20)) as TMP. {
+     asserts_rewrite (($ 20) = ($ 16) +ᵢ ($ 4)). {
+      clear CSR. int auto.
+    }
+    rewrite <- Int.add_assoc.
+    apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($20)) l5)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 20) && ($ 20) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 20) = true). unfolds.
+       asserts_rewrite (($ 20) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 20) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4 )+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 20)) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 16 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 15 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+
+
+(* step 17 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($24)) l6).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 24) && ($ 24) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 24) = true). unfolds.
+        asserts_rewrite (($ 24) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 24) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v7.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($24)) as TMP. {
+     asserts_rewrite (($ 24) = ($ 20) +ᵢ ($ 4)). {
+      clear CSR. int auto.
+    }
+    rewrite <- Int.add_assoc.
+    apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($24)) l6)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 24) && ($ 24) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 24) = true). unfolds.
+       asserts_rewrite (($ 24) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 24) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4 )+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 24)) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 17 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 16 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+
+(* step 18 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($28)) l7).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 28) && ($ 28) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 28) = true). unfolds.
+        asserts_rewrite (($ 28) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 28) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v8.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($28)) as TMP. {
+     asserts_rewrite (($ 28) = ($ 24) +ᵢ ($ 4)). {
+      clear CSR. int auto.
+    }
+    rewrite <- Int.add_assoc.
+    apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($28)) l7)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 28) && ($ 28) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 28) = true). unfolds.
+       asserts_rewrite (($ 28) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 28) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4 ) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 28)) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 18 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 17 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+
+
+(* step 19 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($32)) i0).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 32) && ($ 32) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 32) = true). unfolds.
+        asserts_rewrite (($ 32) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 32) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v9.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($32)) as TMP. {
+     asserts_rewrite (($ 32) = ($ 28) +ᵢ ($ 4)). {
+      clear CSR. int auto.
+    }
+    rewrite <- Int.add_assoc.
+    apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($32)) i0)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 32) && ($ 32) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 32) = true). unfolds.
+       asserts_rewrite (($ 32) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 32) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4 ) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 32)) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 19 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 18 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+
+
+
+(* step 20 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($36)) i1).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 36) && ($ 36) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 36) = true). unfolds.
+        asserts_rewrite (($ 36) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 36) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v10.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($36)) as TMP. {
+     asserts_rewrite (($ 36) = ($ 32) +ᵢ ($ 4)). {
+      clear CSR. int auto.
+    }
+    rewrite <- Int.add_assoc.
+    apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($36)) i1)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 36) && ($ 36) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 36) = true). unfolds.
+       asserts_rewrite (($ 36) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 36) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4 ) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_)   +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 36)) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 20 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 19 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(* step 21 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($40)) i2).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 40) && ($ 40) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 40) = true). unfolds.
+        asserts_rewrite (($ 40) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 40) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v11.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($40)) as TMP. {
+     asserts_rewrite (($ 40) = ($ 36) +ᵢ ($ 4)). {
+      clear CSR. int auto.
+    }
+    rewrite <- Int.add_assoc.
+    apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($40)) i2)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 40) && ($ 40) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 40) = true). unfolds.
+       asserts_rewrite (($ 40) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 40) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4 ) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_)  +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 40)) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 21 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 20 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+
+
+
+
+(* step 22 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($44)) i3).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 44) && ($ 44) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 44) = true). unfolds.
+        asserts_rewrite (($ 44) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 44) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v12.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($44)) as TMP. {
+     asserts_rewrite (($ 44) = ($ 40) +ᵢ ($ 4)). {
+      clear CSR. int auto.
+    }
+    rewrite <- Int.add_assoc.
+    apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($44)) i3)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 44) && ($ 44) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 44) = true). unfolds.
+       asserts_rewrite (($ 44) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 44) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4 ) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 44)) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 22 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 21 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+
+
+
+
+
+
+
+
+
+(* step 23 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($48)) i4).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 48) && ($ 48) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 48) = true). unfolds.
+        asserts_rewrite (($ 48) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 48) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v13.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($48)) as TMP. {
+     asserts_rewrite (($ 48) = ($ 44) +ᵢ ($ 4)). {
+      clear CSR. int auto.
+    }
+    rewrite <- Int.add_assoc.
+    apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($48)) i4)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 48) && ($ 48) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 48) = true). unfolds.
+       asserts_rewrite (($ 48) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 48) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4 ) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 48)) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 23 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 22 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+
+
+
+
+
+
+
+
+(* step 24 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($52)) i5).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 52) && ($ 52) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 52) = true). unfolds.
+        asserts_rewrite (($ 52) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 52) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v14.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($52)) as TMP. {
+     asserts_rewrite (($ 52) = ($ 48) +ᵢ ($ 4)). {
+      clear CSR. int auto.
+    }
+    rewrite <- Int.add_assoc.
+    apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($52)) i5)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 52) && ($ 52) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 52) = true). unfolds.
+       asserts_rewrite (($ 52) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 52) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4 ) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 52)) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 24 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 23 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+
+
+(* step 25 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($56)) i6).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 56) && ($ 56) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 56) = true). unfolds.
+        asserts_rewrite (($ 56) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 56) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v15.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($56)) as TMP. {
+     asserts_rewrite (($ 56) = ($ 52) +ᵢ ($ 4)). {
+      clear CSR. int auto.
+    }
+    rewrite <- Int.add_assoc.
+    apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($56)) i6)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 56) && ($ 56) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 56) = true). unfolds.
+       asserts_rewrite (($ 56) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 56) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4 ) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 56)) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 25 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 24 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+
+
+
+
+(* step 26 *)
+
+  assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (ld (sp+ₐₙ($60)) i7).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. simpl. auto.
+      asserts_rewrite(($ (-4096)) <=ᵢ ($ 60) && ($ 60) <=ᵢ ($ 4095) = true). {
+        unfolds.
+        asserts_rewrite (($ (-4096)) <=ᵢ ($ 60) = true). unfolds.
+        asserts_rewrite (($ 60) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+      }
+      assert (exists v, Ms (R r14) +ᵢ ($ 60) = Some v). {
+      assert ( memort_context (get_R r14 R) Ms). iauto.
+      unfold memort_context in H.
+      destruct H as (v1 & v2 & v3 & v4 & v5 & v6 & v7 & v8 & v9 & v10 & v11 & v12 & v13 & v14 & v15 & v16 & H).
+      exists v16.
+      apply H.
+      }
+      inverts H.
+      rewrite H0. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+  (* align *)
+  assert (word_aligned_R (get_R r14 R)+ᵢ ($60)) as TMP. {
+     asserts_rewrite (($ 60) = ($ 56) +ᵢ ($ 4)). {
+      clear CSR. int auto.
+    }
+    rewrite <- Int.add_assoc.
+    apply align_plus4. iauto.
+  }
+
+
+  (* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+          R'#cwp = R#cwp /\ R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+          R'#sp = R#sp /\ F' = F /\ D' = [] /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (ld (sp+ₐₙ($60)) i7)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)  +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) ). iauto.
+    apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    splits;inverts H4;iauto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite(($ (-4096)) <=ᵢ ($ 60) && ($ 60) <=ᵢ ($ 4095) = true) in H0. {
+       unfolds.
+       asserts_rewrite (($ (-4096)) <=ᵢ ($ 60) = true). unfolds.
+       asserts_rewrite (($ 60) >ᵢ ($ (-4096)) = true). mauto. auto. mauto. 
+    }
+    asserts_rewrite (word_aligned (R r14) +ᵢ ($ 60) = true) in H0. iauto.
+    simpl in H0.
+    inverts H0.
+    }
+    }
+    (* annul? no !*){
+    inverts H5.
+    false.
+    apply (AnnulDeq R).
+    apply H8. apply IVR.
+    }
+  }
+  }
+
+
+
+  assert (R'#pc = R_#pc +ᵢ ($4 ) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+    splits. {
+      asserts_rewrite (get_R pc R' = get_R npc R). iauto.
+      asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
+      asserts_rewrite (get_R pc R = (get_R pc R_) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)  +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)). apply CSR.
+      auto.
+    }
+    {
+      unfolds.
+        asserts_rewrite (get_R npc R' = (get_R npc R) +ᵢ ($ 4)). iauto.
+        asserts_rewrite (get_R pc R'  = get_R npc R). iauto.
+        auto.
+    }
+  }
+
+  {
+  assert (handler_context R') as IVR'. {
+    unfolds.
+    splits; try unfolds; try unfolds;
+    try asserts_rewrite ((get_R cwp R') = (get_R cwp R));
+    try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
+    try asserts_rewrite ((get_R et R') = (get_R et R));
+    try asserts_rewrite ((get_R trap R') = (get_R trap R));
+    try asserts_rewrite ((get_R s R') = (get_R s R));
+    iauto; apply IVR.
+  }
+
+  assert (
+   word_aligned_R R'#sp /\ memort_context R'#sp Ms' /\
+   (let (Rr,Fr) := right_win 2 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) /\ word_aligned_R (get_R r14 R') +ᵢ ($ 60)) as ALIGN'. {
+    unfold align_context in ALIGN.
+    splits.
+    {
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+      asserts_rewrite (Ms' = Ms). iauto.
+      asserts_rewrite ((get_R r14 R') = (get_R r14 R)). iauto. iauto.
+    }
+    {
+
+      remember (right_win 2 (R', F')) as K.
+      destruct K as (Rrr',Frr').
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rrr')  = (get_R r17 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rrr')  = (get_R r18 Rrr)). {
+        apply (Right2_Right2_Same R R' Rrr Rrr' F F' Frr Frr'); iauto.
+      }
+      iauto.
+    }
+    asserts_rewrite (get_R r14 R' = get_R r14 R). iauto. iauto.
+  }
+
+  assert (single_mask (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    unfold post_cwp.
+    unfold post_cwp in MASK.
+    asserts_rewrite ((get_R cwp R') = (get_R cwp R)). iauto.
+    iauto.
+  }
+
+
+  assert (D' = []) as DELAY'. {
+    iauto.
+  }
+
+
+  assert (f_context F_restore /\ f_context F_restore_restore /\ f_context F') as CONT'. {
+    splits; iauto.
+    asserts_rewrite(F' = F). iauto.
+    iauto.
+  }
+
+  assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 26 (Mu, Ms', (R', F'),D')) as GOAL'. {
+    apply (No_Event (Cu,Cs) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 25 (Mu, Ms_, (R_, F_),[]) (Mu, Ms', (R', F'),D') (Mu, Ms, (R, F),D));
+    try rewrite DELAY in *; auto.
+  }
+  clear H P__ IVR MASK CSR DELAY ALIGN GOAL CONT TMP.
+  clear Ms R F D.
+  rename Ms' into Ms.
+  rename R' into R.
+  rename F' into F.
+  rename D' into D.
+  rename IVR' into IVR.
+  rename MASK' into MASK.
+  rename CSR' into CSR.
+  rename DELAY' into DELAY.
+  rename GOAL' into GOAL.
+  rename ALIGN' into ALIGN.
+  rename CONT' into CONT.
+
+
+
+
+(* step 27 *)
+
+   assert (not_abort Cs Ms (R,F) D) as NA. {
+    unfolds.
+    exists (R,F) D  (save g0 g0 ᵣ g0).
+    splits.
+    - substs. auto.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
+    - unfolds. auto.
+  }
+
+  (* to P__ *)
+  assert
+  (exists Ms' Q' D', P__ (Cu,Cs) ((Mu,Ms),(R,F),D) ((Mu,Ms'),Q',D')) as H. {
+    apply (Exists_P_Sup Cu Cs Mu Ms (R,F) D);
+    auto; try apply IVR.
+  }
+  destruct H as (Ms' & Q' & D' & P__).
+  destruct Q' as (R' & F').
+  clear NA.
+
+  (* deal with delay *)
+  rewrite DELAY in *.
+
+(* small changes in one step *)
+  assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
+         R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+           R'#cwp = (pre_cwp 1 R) /\ D' = D /\ (let (R_Save,F_Save) := right_win 1 (R,F) in R'#l1 = R_Save#l1 /\ R'#l2 = R_Save#l2 /\ R'#r14 = R_Save#r14 /\ F' = F_Save) /\ Ms' = Ms). {
+  inverts P__.
+  (* usr_mode *) {
+    false. apply (ModeDeq (R,F)); auto.
+    apply IVR.
+  }
+  (* sup_mode *) {
+    inverts H10.
+    unfolds in H6.
+    inverts H6.
+    assert (Cs (cursor_Q (R, F)) = Some (save g0 g0 ᵣ g0)) as INS. {
+    asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
+    }
+    rewrite H11 in INS.
+    clear H11. inverts INS.
+
+    {
+    inverts H12; try solve [false].
+    inverts H5; try solve [false].
+    inverts H6.
+    unfold dec_win in *.
+    destruct (win_masked (pre_cwp 1 R) R).
+    simpl in H13. try false.
+    unfold negb in H13.
+    remember (right_win 1 (R, F)).
+    destruct r.
+    inverts H13.
+    rename Heqr into RWIN.
+    assert (some_reg_eq R R'0). {
+      apply (Hold_Sth_RightWin R R'0 F F' 1); iauto.
+    }
+    unfolds in H. simpl in H.
+    splits.
+    simpl. asserts_rewrite (R npc = R'0 npc). iauto. auto.
+    simpl. asserts_rewrite (R npc = R'0 npc). iauto. auto.
+    simpl. asserts_rewrite (R annul = R'0 annul). iauto. auto.
+    simpl. asserts_rewrite (R et = R'0 et). iauto. auto.
+    simpl. asserts_rewrite (R trap = R'0 trap). iauto. auto.
+    simpl. asserts_rewrite (R s = R'0 s). iauto. auto.
+    simpl. asserts_rewrite (R Rwim = R'0 Rwim). iauto. auto.
+    splits.
+    simpl. asserts_rewrite (pre_cwp 1 R = R'0 cwp). {
+      symmetry. apply (right_cwp R R'0 F F'); iauto.
+    } 
+    iauto.
+    iauto.
+    asserts_rewrite (get_R r17 (next R'0 # r0 <- ((get_R r0 R) +ᵢ a)) = get_R r17 R'0). iauto. auto. auto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite (win_masked (pre_cwp 1 R) R = false) in H0. {
+      apply (mask_cwp_pre1 R); iauto. apply IVR.
     }
     simpl in H0.
     inverts H0.
@@ -5585,33 +5713,44 @@ Proof.
     asserts_rewrite(Int.unsigned Asm.N - 1 = 7). {
       unfold Asm.N. mauto.
     }
-    asserts_rewrite((get_R cwp R') = post_cwp 1 R). iauto.
-    apply (cwp_cycle_post R). apply IVR.
+    asserts_rewrite((get_R cwp R') = pre_cwp 1 R). iauto.
+    apply (cwp_cycle_pre R). apply IVR.
   }
 
-  assert (word_aligned_R R'#r17 /\ word_aligned_R R'#r18) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (get_R r17 R' = get_R r17 R_save). iauto. iauto.
-    asserts_rewrite (get_R r18 R' = get_R r18 R_save). iauto. iauto.
+  assert ((let (Rr,Fr) := right_win 1 (R',F') in word_aligned_R Rr#l1 /\ word_aligned_R Rr#l2) ) as ALIGN'. {
+    {
+      remember (right_win 1 (R', F')) as K.
+      destruct K as (Rr',Fr').
+      remember (right_win 1 (R, F)) as K.
+      destruct K as (Rr,Fr).
+      remember (right_win 2 (R, F)) as K.
+      destruct K as (Rrr,Frr).
+      asserts_rewrite ((get_R r17 Rr')  = (get_R r17 Rrr)). {
+      apply (Right_Right_is_Right2 R R' Rr Rr' Rrr F F' Fr Fr' Frr); iauto.
+      }
+      asserts_rewrite ((get_R r18 Rr')  = (get_R r18 Rrr)). {
+      apply (Right_Right_is_Right2 R R' Rr Rr' Rrr F F' Fr Fr' Frr); iauto.
+      }
+      splits;
+      iauto.
+    }  
   }
 
-  assert (single_mask (pre_cwp 1 R') R'#wim) as MASK'. {
-    clear GOAL CSR CSR' ALIGN ALIGN'.
-    asserts_rewrite (pre_cwp 1 R' = get_R cwp R).
-    symmetry.
-    apply (post_is_pre R R'); iauto. apply IVR.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
+
+  assert (single_mask2 R'#cwp (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    apply (Post1_add_1_is_2 R R'); iauto.
   }
 
   assert (D' = []) as DELAY'. {
-    iauto.
+    asserts_rewrite (D' = D). iauto. iauto.
   }
 
   assert (f_context F') as CONT'. {
-    assert (exists Rx : RegFile, (Rx, F') = left_win 1 (R, F)). iauto.
-    destruct H0 as (Rx & H0).
-    apply (hold_context_left R Rx F F'); iauto.
+    remember (right_win 1 (R, F)) as K.
+      destruct K as (Rr,Fr).
+    asserts_rewrite(F' = Fr). iauto.
+    apply (hold_context_right R Rr F Fr); iauto. 
   }
 
   assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 27 (Mu, Ms', (R', F'),D')) as GOAL'. {
@@ -5634,14 +5773,26 @@ Proof.
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 (* step 28 *)
 
    assert (not_abort Cs Ms (R,F) D) as NA. {
     unfolds.
-    exists (R,F) D  (or g0 l7 ᵣ g1).
+    exists (R,F) D  (save g0 g0 ᵣ g0).
     splits.
     - substs. auto.
-    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
+    - asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
     - unfolds. auto.
   }
 
@@ -5658,20 +5809,20 @@ Proof.
   (* deal with delay *)
   rewrite DELAY in *.
 
-  (* small changes in one step *)
+(* small changes in one step *)
   assert (R'#pc = R#npc /\ R'#npc = R#npc +ᵢ ($4) /\
-          R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
-          R'#cwp = R#cwp /\ R'#l1 = R#l1 /\ R'#l2 = R#l2 /\ D' = [] /\ F' = F). {
+         R'#annul = R#annul /\ R'#et = R#et /\ R'#trap = R#trap /\ R'#s = R#s /\ R'#wim = R#wim /\
+           R'#cwp = (pre_cwp 1 R) /\ D' = D /\ (let (R_Save,F_Save) := right_win 1 (R,F) in R'#l1 = R_Save#l1 /\ R'#l2 = R_Save#l2 /\ R'#r14 = R_Save#r14 /\ F' = F_Save) /\ Ms' = Ms). {
   inverts P__.
   (* usr_mode *) {
     false. apply (ModeDeq (R,F)); auto.
     apply IVR.
   }
-   (* sup_mode *) {
+  (* sup_mode *) {
     inverts H10.
     unfolds in H6.
     inverts H6.
-    assert (Cs (cursor_Q (R, F)) = Some (or g0 l7 ᵣ g1)) as INS. {
+    assert (Cs (cursor_Q (R, F)) = Some (save g0 g0 ᵣ g0)) as INS. {
     asserts_rewrite (cursor_Q (R, F) = (cursor_Q (R_, F_)) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)); iauto. apply FUNC.
     }
     rewrite H11 in INS.
@@ -5680,9 +5831,43 @@ Proof.
     {
     inverts H12; try solve [false].
     inverts H5; try solve [false].
-    inverts H4; repeat (split; auto); auto.
+    inverts H6.
+    unfold dec_win in *.
+    destruct (win_masked (pre_cwp 1 R) R).
+    simpl in H13. try false.
+    unfold negb in H13.
+    remember (right_win 1 (R, F)).
+    destruct r.
+    inverts H13.
+    rename Heqr into RWIN.
+    assert (some_reg_eq R R'0). {
+      apply (Hold_Sth_RightWin R R'0 F F' 1); iauto.
     }
-
+    unfolds in H. simpl in H.
+    splits.
+    simpl. asserts_rewrite (R npc = R'0 npc). iauto. auto.
+    simpl. asserts_rewrite (R npc = R'0 npc). iauto. auto.
+    simpl. asserts_rewrite (R annul = R'0 annul). iauto. auto.
+    simpl. asserts_rewrite (R et = R'0 et). iauto. auto.
+    simpl. asserts_rewrite (R trap = R'0 trap). iauto. auto.
+    simpl. asserts_rewrite (R s = R'0 s). iauto. auto.
+    simpl. asserts_rewrite (R Rwim = R'0 Rwim). iauto. auto.
+    splits.
+    simpl. asserts_rewrite (pre_cwp 1 R = R'0 cwp). {
+      symmetry. apply (right_cwp R R'0 F F'); iauto.
+    } 
+    iauto.
+    iauto.
+    asserts_rewrite (get_R r17 (next R'0 # r0 <- ((get_R r0 R) +ᵢ a)) = get_R r17 R'0). iauto. auto. auto.
+    (* trap? no !*){
+    inverts H4.
+    asserts_rewrite (win_masked (pre_cwp 1 R) R = false) in H0. {
+      apply (mask_cwp_pre2 R); iauto. apply IVR.
+    }
+    simpl in H0.
+    inverts H0.
+    }
+    }
     (* annul? no !*){
     inverts H5.
     false.
@@ -5692,7 +5877,7 @@ Proof.
   }
   }
 
-  assert (R'#pc = R_#pc +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
+  assert (R'#pc = R_#pc +ᵢ ($ 4) +ᵢ ($ 4) +ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4)+ᵢ ($4) +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)  +ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($ 4)+ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) +ᵢ ($4) /\ normal_cursor (R',F')) as CSR'. {
     splits. {
       asserts_rewrite (get_R pc R' = get_R npc R). iauto.
       asserts_rewrite (get_R npc R = (get_R pc R) +ᵢ ($ 4)). apply CSR.
@@ -5711,33 +5896,43 @@ Proof.
   assert (handler_context R') as IVR'. {
     unfolds.
     splits; try unfolds; try unfolds;
-    try asserts_rewrite ((get_R cwp R') = (get_R cwp R)); 
     try asserts_rewrite ((get_R annul R') = (get_R annul R)); 
     try asserts_rewrite ((get_R et R') = (get_R et R));
     try asserts_rewrite ((get_R trap R') = (get_R trap R));
     try asserts_rewrite ((get_R s R') = (get_R s R));
     iauto; try apply IVR.
+    unfolds in IVR.
+    asserts_rewrite(Int.unsigned Asm.N - 1 = 7). {
+      unfold Asm.N. mauto.
+    }
+    asserts_rewrite((get_R cwp R') = pre_cwp 1 R). iauto.
+    apply (cwp_cycle_pre R). apply IVR.
   }
 
-  assert (word_aligned_R R'#r17 /\ word_aligned_R R'#r18) as ALIGN'. {
-    splits; iauto.
-    asserts_rewrite (get_R r17 R' = get_R r17 R). iauto. iauto.
-    asserts_rewrite (get_R r18 R' = get_R r18 R). iauto. iauto.
+  assert (word_aligned_R R'#l1 /\ word_aligned_R R'#l2) as ALIGN'. {
+    {
+      remember (right_win 1 (R, F)) as K.
+      destruct K as (Rr,Fr).
+      asserts_rewrite ((get_R r17 R')  = (get_R r17 Rr)). iauto.
+      asserts_rewrite ((get_R r18 R')  = (get_R r18 Rr)). iauto.
+      iauto.
+    }  
   }
 
-  assert (single_mask (pre_cwp 1 R') R'#wim) as MASK'. {
-    unfold pre_cwp.
-    asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
-    asserts_rewrite (get_R wim R' = get_R wim R). iauto.
-    apply MASK.
+  assert (single_mask2 (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    asserts_rewrite ((get_R wim R') = (get_R wim R)). iauto.
+    apply (Post2_add_1_is_3 R R'); iauto.
   }
 
   assert (D' = []) as DELAY'. {
-    iauto.
+    asserts_rewrite (D' = D). iauto. iauto.
   }
 
   assert (f_context F') as CONT'. {
-    asserts_rewrite(F' = F). iauto. iauto.
+    remember (right_win 1 (R, F)) as K.
+      destruct K as (Rr,Fr).
+    asserts_rewrite(F' = Fr). iauto.
+    apply (hold_context_right R Rr F Fr); iauto. 
   }
 
   assert (Z__ (Cu, Cs) (Mu, Ms_, (R_, F_),[]) [None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None;None] 28 (Mu, Ms', (R', F'),D')) as GOAL'. {
@@ -5757,6 +5952,8 @@ Proof.
   rename GOAL' into GOAL.
   rename ALIGN' into ALIGN.
   rename CONT' into CONT.
+
+
 
 (* step 29 *)
 
@@ -5846,8 +6043,8 @@ Proof.
     asserts_rewrite (get_R r18 R' = get_R r18 R). iauto. iauto.
   }
 
-  assert (single_mask (pre_cwp 1 R') R'#wim) as MASK'. {
-    unfold pre_cwp.
+  assert (single_mask2 (post_cwp 1 R') (get_R wim R')) as MASK'. {
+    unfold post_cwp.
     asserts_rewrite (get_R cwp R' = get_R cwp R). iauto.
     asserts_rewrite (get_R wim R' = get_R wim R). iauto.
     apply MASK.
@@ -5881,6 +6078,8 @@ Proof.
 
 
 
+
+
 (* step 30 *)
 
    assert (not_abort Cs Ms (R,F) D) as NA. {
@@ -5898,7 +6097,7 @@ Proof.
       asserts_rewrite(usr_mode R = false). apply IVR.
       unfolds inc_win.
       asserts_rewrite (win_masked (post_cwp 1 R) R = false). {
-      apply (mask_cwp_post2 R); iauto. apply IVR.
+      apply (mask_cwp_post3 R); iauto. apply IVR.
     }
     simpl. auto.
   }
@@ -5942,7 +6141,7 @@ Proof.
     unfold rett_f in H17.
     unfolds inc_win.
     asserts_rewrite (win_masked (post_cwp 1 R) R = false) in H17. {
-      apply (mask_cwp_post2 R); iauto. apply IVR.
+      apply (mask_cwp_post3 R); iauto. apply IVR.
     }
     unfold negb in H17.
     remember (left_win 1 (R, F)).
@@ -5976,10 +6175,8 @@ Proof.
   }
   }
 
-  assert (single_mask (pre_cwp 2 R') R'#wim) as MASK'. {
-    asserts_rewrite (pre_cwp 2 R' = pre_cwp 1 R).
-    symmetry. apply (pre_pre_is_pre2 R R'); iauto.
-    apply IVR.
+  assert (single_mask2 R'#cwp R'#wim) as MASK'. {
+    asserts_rewrite (get_R cwp R' = post_cwp 1 R). iauto.
     asserts_rewrite (get_R wim R' = get_R wim R). iauto.
     apply MASK.
   }
@@ -6002,6 +6199,7 @@ Proof.
   rename DELAY' into DELAY.
   rename GOAL' into GOAL.
 
+
 (* Done! *)
 
 
@@ -6013,10 +6211,7 @@ Proof.
   unfolds. auto.
   rewrite HeqE.
   simpl. auto.
-
-}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 Qed.
-
 
 
 

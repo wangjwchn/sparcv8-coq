@@ -1,5 +1,5 @@
-Require Import Coqlib.
-Require Import Integers.
+Require Import SMTC.Coqlib.
+Require Import SMTC.Integers.
 Require Import ZArith.
 Require Import LibTactics.
 

@@ -1,7 +1,8 @@
-Require Import Coqlib.
-Require Import Maps.
+Require Import SMTC.Coqlib.
+Require Import SMTC.Integers.
 
-Require Import Integers.
+
+Require Import Maps.
 Open Scope Z_scope.
 Import ListNotations.
 
